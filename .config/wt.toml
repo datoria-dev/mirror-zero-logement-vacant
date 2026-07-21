@@ -1,0 +1,61 @@
+[list]
+url = "http://localhost:{{ (branch ~ 'front') | hash_port }}"
+
+[[pre-start]]
+copy = "wt step copy-ignored"
+
+[[pre-start]]
+install = "yarn install --immutable --immutable-cache"
+
+[[post-start]]
+setup-front-env = """
+FRONT_PORT='{{ (branch ~ 'front') | hash_port }}'
+echo "VITE_PORT=${FRONT_PORT}" >> frontend/.env
+"""
+setup-api-env = """
+API_PORT='{{ (branch ~ 'api') | hash_port }}'
+grep -q '^PORT=' server/.env && sed -i '' "s|^PORT=.*|PORT=${API_PORT}|"
+server/.env || echo "PORT=${API_PORT}" >> server/.env
+grep -q '^VITE_API_URL=' frontend/.env && sed -i ''
+"s|^VITE_API_URL=.*|VITE_API_URL=http://localhost:${API_PORT}|" frontend/.env ||
+echo "VITE_API_URL=http://localhost:${API_PORT}" >> frontend/.env
+"""
+# Set up databases in parallel
+setup-dev-db = """
+DB="dev_{{ branch | sanitize_db }}"
+docker exec zlv createdb -U postgres ${DB} 2>/dev/null || echo ${DB} already exists
+sed -i '' "s|DATABASE_URL=.*|DATABASE_URL=postgres://postgres:postgres@localhost/${DB}|" server/.env
+"""
+setup-test-db = """
+DB='test_{{ branch | sanitize_db }}'
+docker exec zlv createdb -U postgres ${DB} 2>/dev/null || echo ${DB} already exists
+sed -i '' "s|DATABASE_URL=.*|DATABASE_URL=postgres://postgres:postgres@localhost/${DB}|" server/.env.test
+"""
+
+[[post-start]]
+build = "yarn build"
+
+[[post-start]]
+migrate = "yarn nx run server:migrate"
+
+[[post-start]]
+seed = "yarn nx run server:seed"
+
+# Run dev servers after migrate
+[[post-start]]
+dev = "yarn nx run-many -t dev -p=front,server"
+
+[pre-commit]
+lint = "yarn nx affected -t lint"
+typecheck = "yarn nx affected -t typecheck"
+
+[post-remove]
+remove-dev-db = """
+DB="dev_{{ branch | sanitize_db }}"
+docker exec zlv dropdb -U postgres --if-exists ${DB} || echo "Warning: could not drop ${DB}"
+"""
+remove-test-db = """
+DB="test_{{ branch | sanitize_db }}"
+docker exec zlv dropdb -U postgres --if-exists ${DB} || echo "Warning: could not drop ${DB}"
+"""
+kill-server = "lsof -ti :{{ branch | hash_port }} -sTCP:LISTEN | xargs kill 2>/dev/null || true"

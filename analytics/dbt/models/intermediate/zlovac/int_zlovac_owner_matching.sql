@@ -1,0 +1,200 @@
+-- int_zlovac_owner_matching.sql
+-- Applies rank logic based on CER→FF25 matching results.
+-- Reads from int_zlovac_owner_cer_matched (the matching) and int_zlovac (FF owners 1..6).
+--
+-- Exposes a `dedup_key` (COALESCE(idpersonne, fullname)) used downstream:
+--   - int_zlovac_owners deduplicates by dedup_key and assigns a unique owner_uid
+--   - int_zlovac_owner_housing joins back via dedup_key to retrieve owner_uid
+-- The owner_uid is intentionally NOT generated here: we used to call uuid() per row,
+-- which produced N distinct UUIDs for the same person and broke FK integrity (~588k orphans).
+--
+-- Three outcome cases:
+--   1. Match + found in LOVAC 6: CER=rank 1, remove dup, rest keep order
+--   2. Match + not found in 6:   CER=rank 1 (with idpersonne), FF owners=rank -1
+--   3. No match:                 CER=rank 1 (no idpersonne), FF owners=rank -1
+
+{{ config(materialized='table') }}
+
+WITH zlovac AS (
+    SELECT
+        local_id,
+        owner_fullname,
+        ff_owner_1_idpersonne, ff_owner_2_idpersonne, ff_owner_3_idpersonne,
+        ff_owner_4_idpersonne, ff_owner_5_idpersonne, ff_owner_6_idpersonne,
+        ff_owner_1_fullname, ff_owner_2_fullname, ff_owner_3_fullname,
+        ff_owner_4_fullname, ff_owner_5_fullname, ff_owner_6_fullname,
+        ff_owner_1_idprodroit, ff_owner_2_idprodroit, ff_owner_3_idprodroit,
+        ff_owner_4_idprodroit, ff_owner_5_idprodroit, ff_owner_6_idprodroit,
+        ff_owner_1_locprop, ff_owner_2_locprop, ff_owner_3_locprop,
+        ff_owner_4_locprop, ff_owner_5_locprop, ff_owner_6_locprop,
+        ff_owner_1_property_rights, ff_owner_2_property_rights, ff_owner_3_property_rights,
+        ff_owner_4_property_rights, ff_owner_5_property_rights, ff_owner_6_property_rights
+    FROM {{ ref('int_zlovac') }}
+),
+
+-- Detect if matched idpersonne is among FF owners 1..6
+match_with_dup_detection AS (
+    SELECT
+        z.local_id,
+        z.owner_fullname,
+        m.matched_idpersonne,
+        m.match_source,
+        CASE
+            WHEN m.matched_idpersonne = z.ff_owner_1_idpersonne THEN 1
+            WHEN m.matched_idpersonne = z.ff_owner_2_idpersonne THEN 2
+            WHEN m.matched_idpersonne = z.ff_owner_3_idpersonne THEN 3
+            WHEN m.matched_idpersonne = z.ff_owner_4_idpersonne THEN 4
+            WHEN m.matched_idpersonne = z.ff_owner_5_idpersonne THEN 5
+            WHEN m.matched_idpersonne = z.ff_owner_6_idpersonne THEN 6
+            ELSE NULL
+        END AS matched_slot
+    FROM zlovac z
+    LEFT JOIN {{ ref('int_zlovac_owner_cer_matched') }} m ON z.local_id = m.local_id
+),
+
+-- Unpivot: CER 1767 owner (rank 1) + FF owners 1..6
+unpivoted AS (
+    -- CER 1767 owner (always rank 1)
+    -- When matched to a FF slot, inherit idprodroit/locprop/property_rights
+    -- from that slot — otherwise the FF slot row is dropped (rank=NULL) and
+    -- ccodro/idprodroit would be lost.
+    SELECT
+        d.local_id,
+        d.matched_idpersonne AS ff_owner_idpersonne,
+        CASE d.matched_slot
+            WHEN 1 THEN z.ff_owner_1_idprodroit
+            WHEN 2 THEN z.ff_owner_2_idprodroit
+            WHEN 3 THEN z.ff_owner_3_idprodroit
+            WHEN 4 THEN z.ff_owner_4_idprodroit
+            WHEN 5 THEN z.ff_owner_5_idprodroit
+            WHEN 6 THEN z.ff_owner_6_idprodroit
+        END AS ff_owner_idprodroit,
+        CASE d.matched_slot
+            WHEN 1 THEN z.ff_owner_1_locprop
+            WHEN 2 THEN z.ff_owner_2_locprop
+            WHEN 3 THEN z.ff_owner_3_locprop
+            WHEN 4 THEN z.ff_owner_4_locprop
+            WHEN 5 THEN z.ff_owner_5_locprop
+            WHEN 6 THEN z.ff_owner_6_locprop
+        END AS ff_owner_locprop,
+        CASE d.matched_slot
+            WHEN 1 THEN z.ff_owner_1_property_rights
+            WHEN 2 THEN z.ff_owner_2_property_rights
+            WHEN 3 THEN z.ff_owner_3_property_rights
+            WHEN 4 THEN z.ff_owner_4_property_rights
+            WHEN 5 THEN z.ff_owner_5_property_rights
+            WHEN 6 THEN z.ff_owner_6_property_rights
+        END AS ff_owner_property_rights,
+        d.owner_fullname AS ff_owner_fullname,
+        1 AS rank,
+        d.match_source
+    FROM match_with_dup_detection d
+    LEFT JOIN zlovac z ON z.local_id = d.local_id
+
+    UNION ALL
+
+    -- FF owner 1
+    SELECT z.local_id, z.ff_owner_1_idpersonne, z.ff_owner_1_idprodroit, z.ff_owner_1_locprop, z.ff_owner_1_property_rights,
+        z.ff_owner_1_fullname,
+        CASE
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot = 1 THEN NULL
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot IS NOT NULL THEN 2
+            ELSE -1
+        END AS rank,
+        NULL AS match_source
+    FROM zlovac z
+    JOIN match_with_dup_detection d ON z.local_id = d.local_id
+    WHERE z.ff_owner_1_fullname IS NOT NULL
+
+    UNION ALL
+
+    -- FF owner 2
+    SELECT z.local_id, z.ff_owner_2_idpersonne, z.ff_owner_2_idprodroit, z.ff_owner_2_locprop, z.ff_owner_2_property_rights,
+        z.ff_owner_2_fullname,
+        CASE
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot = 2 THEN NULL
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot IS NOT NULL THEN
+                CASE WHEN d.matched_slot < 2 THEN 2 ELSE 3 END
+            ELSE -1
+        END AS rank,
+        NULL
+    FROM zlovac z
+    JOIN match_with_dup_detection d ON z.local_id = d.local_id
+    WHERE z.ff_owner_2_fullname IS NOT NULL
+
+    UNION ALL
+
+    -- FF owner 3
+    SELECT z.local_id, z.ff_owner_3_idpersonne, z.ff_owner_3_idprodroit, z.ff_owner_3_locprop, z.ff_owner_3_property_rights,
+        z.ff_owner_3_fullname,
+        CASE
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot = 3 THEN NULL
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot IS NOT NULL THEN
+                CASE WHEN d.matched_slot < 3 THEN 3 ELSE 4 END
+            ELSE -1
+        END AS rank,
+        NULL
+    FROM zlovac z
+    JOIN match_with_dup_detection d ON z.local_id = d.local_id
+    WHERE z.ff_owner_3_fullname IS NOT NULL
+
+    UNION ALL
+
+    -- FF owner 4
+    SELECT z.local_id, z.ff_owner_4_idpersonne, z.ff_owner_4_idprodroit, z.ff_owner_4_locprop, z.ff_owner_4_property_rights,
+        z.ff_owner_4_fullname,
+        CASE
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot = 4 THEN NULL
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot IS NOT NULL THEN
+                CASE WHEN d.matched_slot < 4 THEN 4 ELSE 5 END
+            ELSE -1
+        END AS rank,
+        NULL
+    FROM zlovac z
+    JOIN match_with_dup_detection d ON z.local_id = d.local_id
+    WHERE z.ff_owner_4_fullname IS NOT NULL
+
+    UNION ALL
+
+    -- FF owner 5
+    SELECT z.local_id, z.ff_owner_5_idpersonne, z.ff_owner_5_idprodroit, z.ff_owner_5_locprop, z.ff_owner_5_property_rights,
+        z.ff_owner_5_fullname,
+        CASE
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot = 5 THEN NULL
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot IS NOT NULL THEN
+                CASE WHEN d.matched_slot < 5 THEN 5 ELSE 6 END
+            ELSE -1
+        END AS rank,
+        NULL
+    FROM zlovac z
+    JOIN match_with_dup_detection d ON z.local_id = d.local_id
+    WHERE z.ff_owner_5_fullname IS NOT NULL
+
+    UNION ALL
+
+    -- FF owner 6
+    SELECT z.local_id, z.ff_owner_6_idpersonne, z.ff_owner_6_idprodroit, z.ff_owner_6_locprop, z.ff_owner_6_property_rights,
+        z.ff_owner_6_fullname,
+        CASE
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot = 6 THEN NULL
+            WHEN d.matched_idpersonne IS NOT NULL AND d.matched_slot IS NOT NULL THEN 6
+            ELSE -1
+        END AS rank,
+        NULL
+    FROM zlovac z
+    JOIN match_with_dup_detection d ON z.local_id = d.local_id
+    WHERE z.ff_owner_6_fullname IS NOT NULL
+)
+
+SELECT
+    local_id,
+    ff_owner_idpersonne,
+    ff_owner_idprodroit,
+    ff_owner_locprop,
+    ff_owner_property_rights,
+    ff_owner_fullname,
+    rank,
+    match_source,
+    COALESCE(ff_owner_idpersonne, ff_owner_fullname) AS dedup_key
+FROM unpivoted
+WHERE rank IS NOT NULL

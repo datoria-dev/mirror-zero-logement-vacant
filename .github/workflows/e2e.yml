@@ -1,0 +1,56 @@
+name: End-to-end tests
+
+on:
+  workflow_run:
+    workflows: ['Main']
+    types:
+      - completed
+    branch:
+      - main
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    environment: Staging
+    strategy:
+      matrix:
+        node-version: [24.x]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: yarn
+
+      - run: yarn --version
+
+      - name: Install
+        run: yarn --immutable
+
+      - name: Run cypress tests
+        run: yarn nx e2e front-e2e
+        env:
+          CYPRESS_API: ${{ vars.API_HOST }}
+          CYPRESS_BASE_URL: ${{ vars.HOST }}
+          CYPRESS_EMAIL: ${{ secrets.CYPRESS_EMAIL }}
+          CYPRESS_PASSWORD: ${{ secrets.CYPRESS_PASSWORD }}
+          CYPRESS_MAILER_HOST: ${{ vars.CYPRESS_MAILER_HOST }}
+          CYPRESS_MAILER_USER: ${{ secrets.CYPRESS_MAILER_USER }}
+          CYPRESS_MAILER_PASSWORD: ${{ secrets.CYPRESS_MAILER_PASSWORD }}
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: cypress-screenshots
+          path: apps/e2e/cypress/screenshots
+          retention-days: 7

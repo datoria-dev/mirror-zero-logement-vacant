@@ -1,0 +1,8 @@
+version: 2
+
+
+models:
+  - name: int_ff_ext_2023
+  - name: int_ff_ext_2023_geo_code
+
+    

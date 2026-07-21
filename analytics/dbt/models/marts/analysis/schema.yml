@@ -1,0 +1,187 @@
+version: 2
+
+models:
+  - name: marts_analysis_housing_out_features
+    description: Table d'analyse au niveau logement avec indicateur de sortie de vacance
+    columns:
+      - name: housing_id
+        description: Identifiant unique du logement
+        tests:
+          - not_null
+          - unique
+      - name: is_housing_out
+        description: Variable cible 1=sorti, 0=toujours vacant
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+
+  - name: marts_analysis_city_aggregated
+    description: Table d'analyse agregee au niveau commune avec taux de sortie de vacance
+    columns:
+      - name: geo_code
+        description: Code commune
+        tests:
+          - not_null
+          - unique
+
+  - name: marts_bi_housing_characteristics
+    description: |
+      Table BI - Caracteristiques intrinseques des logements pour l'analyse de sortie de vacance.
+      Granularite Logement. Variable cible is_housing_out.
+      Features - Type de logement, taille, age du batiment, DPE, confort, duree de vacance, fiscalite, mutations.
+    columns:
+      - name: housing_id
+        description: Identifiant unique du logement
+        tests:
+          - not_null
+          - unique
+      - name: is_housing_out
+        description: Variable cible 1=sorti, 0=toujours vacant
+      - name: housing_kind
+        description: Type de logement maison ou appartement
+      - name: living_area_category
+        description: Categorie de surface
+      - name: energy_consumption_category
+        description: Categorie DPE Performant Moyen Passoire
+      - name: is_energy_sieve
+        description: TRUE si passoire energetique F ou G
+      - name: vacancy_duration_category
+        description: Categorie de duree 0-2 ans, 3-5 ans, 6-10 ans, Plus de 10 ans
+      - name: vacancy_severity
+        description: Severite de la vacance combinaison duree energie cadastre
+
+  - name: marts_bi_housing_geography
+    description: |
+      Table BI - Contexte geographique et territorial des logements.
+      Features - Localisation, densite, demographie, zonage ABC, prix immobilier, loyers, dynamisme marche, fiscalite, territoires speciaux.
+    columns:
+      - name: housing_id
+        description: Identifiant unique du logement
+        tests:
+          - not_null
+          - unique
+      - name: densite_category
+        description: Categorie de densite Urbain dense, Urbain intermediaire, Rural
+      - name: zonage_category
+        description: Zone tendue ou detendue
+      - name: niveau_loyer
+        description: Categorie de loyer Tres eleve, Eleve, Moyen, Modere, Faible
+      - name: dvg_marche_dynamisme
+        description: Dynamisme du marche
+      - name: is_in_tlv_territory
+        description: TRUE si en zone TLV
+      - name: has_any_special_territory
+        description: TRUE si au moins un programme special
+
+  - name: marts_bi_housing_owners
+    description: |
+      Table BI - Profil des proprietaires rang=1 uniquement.
+      Features - Type de proprietaire, demographie, localisation relative, distance, droits de propriete, multi-propriete, contactabilite.
+    columns:
+      - name: housing_id
+        description: Identifiant unique du logement
+        tests:
+          - not_null
+          - unique
+      - name: owner_kind_category
+        description: Categorie de proprietaire Particulier, SCI, Autre PM, Indivision
+      - name: owner_is_individual
+        description: TRUE si particulier
+      - name: owner_age_category
+        description: Categorie d age
+      - name: owner_is_local
+        description: TRUE si proprietaire local
+      - name: owner_is_distant
+        description: TRUE si proprietaire distant
+      - name: owner_is_multi_owner
+        description: TRUE si multi-proprietaire
+      - name: owner_contactable
+        description: TRUE si email ou telephone disponible
+
+  - name: marts_zlv_usage
+    description: |
+      Table Marts - Metriques d utilisation ZLV au niveau etablissement.
+      Champs strictement issus du spec fields_usage_establishments.csv.
+      Inclut les echelons inscrits (communes inscrites dans les EPCI, etc).
+
+      Attribution des "logements mis a jour": les compteurs logements_maj_* sont
+      calcules a partir des EVENEMENTS crees par les utilisateurs de l etablissement
+      (int_production_events.establishment_id), et NON par le territoire geographique
+      du logement. Un logement n est donc compte que pour l etablissement dont un
+      utilisateur a reellement effectue la mise a jour.
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: logements_maj_suivi <= logements_maj_situation
+      - dbt_utils.expression_is_true:
+          expression: logements_maj_occupation <= logements_maj_situation
+    columns:
+      - name: establishment_id
+        description: Identifiant unique de l etablissement
+        tests:
+          - not_null
+          - unique
+      - name: nom
+        description: Nom de l etablissement
+      - name: ouvert
+        description: TRUE si l etablissement est disponible et a au moins 1 utilisateur
+      - name: logements_maj_situation
+        description: |
+          Nombre de logements distincts mis a jour (suivi OU occupation) par les
+          utilisateurs de cet etablissement.
+      - name: logements_maj_suivi
+        description: Nombre de logements distincts dont le dernier statut de suivi a ete pose par un utilisateur de l etablissement
+      - name: logements_maj_occupation
+        description: Nombre de logements distincts dont le dernier statut d occupation a ete pose par un utilisateur de l etablissement
+      - name: communes_inscrites
+        description: Nombre de communes inscrites dans le territoire de l EPCI
+      - name: communes_inscrites_pct
+        description: Pourcentage de communes inscrites dans le territoire de l EPCI
+      - name: intercommunalites_inscrites
+        description: Nombre d intercommunalites inscrites dans le departement
+      - name: intercommunalites_inscrites_pct
+        description: Pourcentage d intercommunalites inscrites dans le departement
+      - name: departements_inscrits
+        description: Nombre de departements inscrits dans la region
+      - name: departements_inscrits_pct
+        description: Pourcentage de departements inscrits dans la region
+      - name: sded_inscrits
+        description: Nombre de SDED inscrits dans la region
+      - name: sded_inscrits_pct
+        description: Pourcentage de SDED inscrits dans la region
+
+  - name: marts_bi_housing_zlv_usage
+    description: |
+      Table BI - Dual-echelon establishment features par logement.
+      Pour chaque logement, fournit les metriques de l etablissement EPCI (CA/CC/CU/ME)
+      et de l etablissement Commune correspondants.
+      Champs strictement issus du spec fields_usage_housing_establishments.csv.
+      Prefixes - epci_ pour l echelon intercommunal, city_ pour l echelon communal.
+    columns:
+      - name: housing_id
+        description: Identifiant unique du logement
+        tests:
+          - not_null
+          - unique
+      - name: epci_establishment_id
+        description: Identifiant de l etablissement EPCI
+      - name: epci_nom
+        description: Nom de l EPCI
+      - name: epci_ouvert
+        description: TRUE si l EPCI est ouvert et actif
+      - name: epci_communes_inscrites
+        description: Nombre de communes inscrites dans le territoire de l EPCI
+      - name: epci_communes_inscrites_pct
+        description: Pourcentage de communes inscrites dans le territoire de l EPCI
+      - name: city_establishment_id
+        description: Identifiant de l etablissement Commune
+      - name: city_nom
+        description: Nom de la Commune
+      - name: city_ouvert
+        description: TRUE si la Commune est ouverte et active
+      - name: city_connexions_30_jours
+        description: Nombre d utilisateurs actifs dans les 30 derniers jours (Commune uniquement)
+      - name: city_connexions_60_jours
+        description: Nombre d utilisateurs actifs dans les 60 derniers jours (Commune uniquement)
+      - name: city_connexions_90_jours
+        description: Nombre d utilisateurs actifs dans les 90 derniers jours (Commune uniquement)

@@ -1,0 +1,94 @@
+import { faker } from '@faker-js/faker/locale/fr';
+import {
+  ActiveOwnerRank,
+  CADASTRAL_CLASSIFICATION_VALUES,
+  HOUSING_KIND_VALUES,
+  Occupancy,
+  OWNER_ENTITY_VALUES,
+  OWNERSHIP_KIND_INTERNAL_VALUES,
+  PROPERTY_RIGHT_VALUES
+} from '@zerologementvacant/models';
+import { genGeoCode } from '@zerologementvacant/models/fixtures';
+
+import { SourceHousingOwner } from '~/scripts/import-lovac/source-housing-owners/source-housing-owner';
+import { SourceHousing } from '~/scripts/import-lovac/source-housings/source-housing';
+import { SourceOwner } from '~/scripts/import-lovac/source-owners/source-owner';
+
+export function genSourceHousing(): SourceHousing {
+  const geoCode = genGeoCode();
+  const isoDate = () =>
+    faker.date.past().toISOString().substring(0, 'yyyy-mm-dd'.length);
+
+  return {
+    invariant: faker.string.numeric(10),
+    local_id: geoCode + faker.string.numeric(7),
+    geo_code: geoCode,
+    building_id: geoCode + faker.string.alphanumeric(10),
+    building_location: faker.location.ordinalDirection(),
+    building_year: faker.date.past().getFullYear(),
+    plot_id: geoCode + faker.string.alphanumeric(9),
+    plot_area: faker.number.int({ min: 1, max: 10_000 }),
+    dgfip_address: faker.location.streetAddress(),
+    latitude_dgfip: faker.location.latitude(),
+    longitude_dgfip: faker.location.longitude(),
+    ban_id: faker.string.uuid(),
+    ban_label: faker.location.streetAddress(),
+    ban_score: faker.number.float({ min: 0, max: 1, fractionDigits: 2 }),
+    ban_latitude: faker.location.latitude(),
+    ban_longitude: faker.location.longitude(),
+    housing_kind: faker.helpers.arrayElement(HOUSING_KIND_VALUES),
+    condominium: faker.helpers.arrayElement(OWNERSHIP_KIND_INTERNAL_VALUES),
+    rooms_count: faker.number.int({ min: 1, max: 10 }),
+    uncomfortable: faker.datatype.boolean(),
+    cadastral_classification: faker.helpers.arrayElement(
+      CADASTRAL_CLASSIFICATION_VALUES
+    ),
+    living_area: faker.number.float({ min: 10, max: 100, fractionDigits: 2 }),
+    taxed: faker.datatype.boolean(),
+    vacancy_start_year: faker.date.past().getFullYear(),
+    mutation_date: isoDate(),
+    last_mutation_date: isoDate(),
+    last_transaction_date: isoDate(),
+    last_transaction_value: faker.number.int({ min: 100_000, max: 1_000_000 }),
+    occupancy_source: Occupancy.VACANT,
+    rental_value: faker.number.int({ min: 500, max: 10000 }),
+    geolocation: null,
+    geolocation_source: faker.helpers.arrayElement([
+      null,
+      'parcelle-ff',
+      'bati-rnb',
+      'adresse-ban'
+    ])
+  };
+}
+
+export function genSourceOwner(): SourceOwner {
+  return {
+    owner_uid: faker.string.uuid(),
+    idpersonne: faker.string.alphanumeric(11),
+    full_name: faker.person.fullName(),
+    username: faker.helpers.maybe(() => faker.person.lastName()) ?? null,
+    address_dgfip: faker.location.streetAddress(),
+    birth_date: faker.date.past(),
+    siren: null,
+    ownership_type: 'Particulier',
+    entity: faker.helpers.arrayElement(OWNER_ENTITY_VALUES)
+  };
+}
+
+export function genSourceHousingOwner(
+  sourceHousing: SourceHousing,
+  sourceOwner: SourceOwner
+): SourceHousingOwner {
+  return {
+    owner_uid: sourceOwner.owner_uid,
+    geo_code: sourceHousing.geo_code,
+    local_id: sourceHousing.local_id,
+    idpersonne: sourceOwner.idpersonne,
+    idprocpte: faker.string.alphanumeric(11),
+    idprodroit: faker.string.alphanumeric(13),
+    locprop_source: faker.helpers.arrayElement([1, 2, 3, 4, 5, 6, 9]),
+    rank: faker.number.int({ min: 1, max: 6 }) as ActiveOwnerRank,
+    property_right: faker.helpers.arrayElement(PROPERTY_RIGHT_VALUES)
+  };
+}

@@ -1,0 +1,4 @@
+.pnp.*
+.yarn/berry
+
+frontend/node_modules

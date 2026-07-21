@@ -1,0 +1,429 @@
+import fs from 'node:fs';
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
+import { ReadableStream } from 'node:stream/web';
+
+import { DuckDBInstance } from '@duckdb/node-api';
+import { faker } from '@faker-js/faker/locale/fr';
+import {
+  HOUSING_STATUS_VALUES,
+  HousingStatus,
+  Occupancy,
+  OCCUPANCY_VALUES
+} from '@zerologementvacant/models';
+
+import { BuildingApi } from '~/models/BuildingApi';
+import { HousingEventApi } from '~/models/EventApi';
+import { HousingApi } from '~/models/HousingApi';
+import { UserApi } from '~/models/UserApi';
+import {
+  Buildings,
+  formatBuildingApi
+} from '~/repositories/buildingRepository';
+import {
+  Establishments,
+  formatEstablishmentApi
+} from '~/repositories/establishmentRepository';
+import {
+  EventRecordDBO,
+  Events,
+  EVENTS_TABLE,
+  formatEventApi,
+  formatHousingEventApi,
+  HOUSING_EVENTS_TABLE,
+  HousingEventDBO,
+  HousingEvents
+} from '~/repositories/eventRepository';
+import {
+  formatHousingRecordApi,
+  Housing,
+  HousingRecordDBO,
+  housingTable
+} from '~/repositories/housingRepository';
+import { toUserDBO, Users } from '~/repositories/userRepository';
+import { genSourceHousing } from '~/scripts/import-lovac/infra/fixtures';
+import { createUpdater } from '~/scripts/import-lovac/infra/updater';
+import { SourceHousing } from '~/scripts/import-lovac/source-housings/source-housing';
+import { createSourceHousingCommand } from '~/scripts/import-lovac/source-housings/source-housing-command';
+import { updateHousings } from '~/scripts/import-lovac/source-housings/source-housing-loader';
+import {
+  genBuildingApi,
+  genEstablishmentApi,
+  genEventApi,
+  genHousingApi,
+  genUserApi
+} from '~/test/testFixtures';
+
+describe('Source housing command', () => {
+  const command = createSourceHousingCommand();
+  const deptsDir = path.join(import.meta.dirname, 'depts');
+
+  const building: BuildingApi = genBuildingApi();
+
+  const missingSourceHousings: ReadonlyArray<SourceHousing> =
+    faker.helpers.multiple(
+      () => ({
+        ...genSourceHousing(),
+        building_id: building.id
+      }),
+      {
+        count: { min: 5, max: 50 }
+      }
+    );
+
+  const vacantHousings: ReadonlyArray<HousingApi> =
+    faker.helpers.multiple<HousingApi>(
+      () => ({
+        ...genHousingApi(),
+        buildingId: building.id,
+        occupancy: Occupancy.VACANT,
+        occupancyRegistered: Occupancy.VACANT
+      }),
+      { count: { min: 5, max: 50 } }
+    );
+  const nonVacantOccupancies = OCCUPANCY_VALUES.filter(
+    (occupancy) => occupancy !== Occupancy.VACANT
+  );
+  const contactedStatuses = HOUSING_STATUS_VALUES.filter(
+    (status) => status !== HousingStatus.NEVER_CONTACTED
+  );
+  const nonVacantUserModifiedHousings: ReadonlyArray<HousingApi> = faker.helpers
+    .multiple(() => faker.helpers.arrayElement(nonVacantOccupancies), {
+      count: { min: 5, max: 50 }
+    })
+    .map((occupancy) => ({
+      ...genHousingApi(),
+      buildingId: building.id,
+      occupancy: occupancy,
+      occupancyRegistered: occupancy,
+      status: faker.helpers.arrayElement(contactedStatuses)
+    }));
+  const nonVacantNonUserModifiedHousings: ReadonlyArray<HousingApi> =
+    faker.helpers
+      .multiple(() => faker.helpers.arrayElement(nonVacantOccupancies), {
+        count: { min: 5, max: 50 }
+      })
+      .map((occupancy) => ({
+        ...genHousingApi(),
+        buildingId: building.id,
+        occupancy: occupancy,
+        occupancyRegistered: occupancy,
+        status: faker.helpers.arrayElement(contactedStatuses)
+      }));
+  // Housings to include in the fake LOVAC file
+  const sourceHousings: ReadonlyArray<SourceHousing> = [
+    ...missingSourceHousings,
+    ...vacantHousings.map(toSourceHousing),
+    ...nonVacantUserModifiedHousings.map(toSourceHousing),
+    ...nonVacantNonUserModifiedHousings.map(toSourceHousing)
+  ];
+
+  // Housings to save to the database
+  const housingsBefore: ReadonlyArray<HousingApi> = [
+    ...vacantHousings,
+    ...nonVacantUserModifiedHousings,
+    ...nonVacantNonUserModifiedHousings
+  ];
+
+  // Seed the database
+  beforeAll(async () => {
+    const establishment = genEstablishmentApi();
+    await Establishments().insert(formatEstablishmentApi(establishment));
+    const user: UserApi = {
+      ...genUserApi(establishment.id),
+      email: 'not@an.admin'
+    };
+    const admin: UserApi = {
+      ...genUserApi(establishment.id),
+      email: `${faker.internet.userName().toLowerCase()}@zerologementvacant.beta.gouv.fr`
+    };
+    await Users().insert([user, admin].map(toUserDBO));
+    await Buildings().insert(formatBuildingApi(building));
+    await Housing().insert(housingsBefore.map(formatHousingRecordApi));
+
+    // Insert the related events
+    const events = nonVacantUserModifiedHousings.map<HousingEventApi>(
+      (housing) => {
+        return {
+          ...genEventApi({
+            type: 'housing:occupancy-updated',
+            creator: user,
+            nextOld: {
+              occupancy: faker.helpers.arrayElement(OCCUPANCY_VALUES)
+            },
+            nextNew: {
+              occupancy: housing.occupancy
+            }
+          }),
+          housingGeoCode: housing.geoCode,
+          housingId: housing.id
+        };
+      }
+    );
+    await Events().insert(events.map(formatEventApi));
+    await HousingEvents().insert(events.map(formatHousingEventApi));
+  });
+
+  // Write the file and run
+  beforeAll(async () => {
+    await writeParquetDepts(deptsDir, sourceHousings);
+    await command(deptsDir, {
+      abortEarly: true,
+      from: 'file',
+      year: 'lovac-2025'
+    });
+  });
+
+  afterAll(async () => {
+    await rm(deptsDir, { recursive: true, force: true });
+  });
+
+  it('should add "lovac-2025" to housing updated from LOVAC', async () => {
+    const actual = await refresh([
+      ...vacantHousings,
+      ...nonVacantUserModifiedHousings,
+      ...nonVacantNonUserModifiedHousings
+    ]);
+    expect(actual).toSatisfyAll<HousingRecordDBO>((housing) => {
+      const years = housing.data_file_years as ReadonlyArray<string>;
+      return years.includes('lovac-2025');
+    });
+  });
+
+  it('should update specific housing keys', async () => {
+    const table = faker.string.uuid();
+    const housing = formatHousingRecordApi(genHousingApi());
+    await Housing().insert(housing);
+    const updated: Omit<HousingRecordDBO, 'last_mutation_type'> = {
+      ...formatHousingRecordApi(genHousingApi()),
+      id: housing.id,
+      local_id: housing.local_id,
+      geo_code: housing.geo_code,
+      plot_area: null,
+      occupancy_history: null
+    };
+
+    await ReadableStream.from([updated]).pipeTo(
+      createUpdater<HousingRecordDBO>({
+        destination: 'database',
+        temporaryTable: table,
+        likeTable: housingTable,
+        async update(housings): Promise<void> {
+          await updateHousings(housings, {
+            temporaryTable: table
+          });
+        }
+      })
+    );
+
+    const actual = await Housing()
+      .where({ geo_code: housing.geo_code, id: housing.id })
+      .first();
+    const mutationDate = actual?.mutation_date
+      ? new Date(actual.mutation_date)
+          .toJSON()
+          .substring(0, 'yyyy-mm-dd'.length)
+      : null;
+    const updatedMutationDate = updated.mutation_date
+      ? new Date(updated.mutation_date)
+          .toJSON()
+          .substring(0, 'yyyy-mm-dd'.length)
+      : null;
+    expect(mutationDate).toBe(updatedMutationDate);
+    expect(actual).toMatchObject<Partial<HousingRecordDBO>>({
+      invariant: updated.invariant,
+      building_id: updated.building_id,
+      building_group_id: updated.building_group_id,
+      plot_id: updated.plot_id,
+      address_dgfip: updated.address_dgfip,
+      longitude_dgfip: updated.longitude_dgfip,
+      latitude_dgfip: updated.latitude_dgfip,
+      geolocation: updated.geolocation,
+      cadastral_classification: updated.cadastral_classification,
+      uncomfortable: updated.uncomfortable,
+      vacancy_start_year: updated.vacancy_start_year,
+      housing_kind: updated.housing_kind,
+      rooms_count: updated.rooms_count,
+      living_area: updated.living_area,
+      cadastral_reference: updated.cadastral_reference,
+      building_year: updated.building_year,
+      taxed: updated.taxed,
+      data_years: updated.data_years,
+      data_file_years: updated.data_file_years,
+      data_source: updated.data_source,
+      beneficiary_count: updated.beneficiary_count,
+      building_location: updated.building_location,
+      rental_value: updated.rental_value,
+      condominium: updated.condominium,
+      status: updated.status,
+      sub_status: updated.sub_status,
+      occupancy: updated.occupancy,
+      occupancy_source: updated.occupancy_source,
+      occupancy_intended: updated.occupancy_intended,
+      energy_consumption_bdnb: updated.energy_consumption_bdnb,
+      energy_consumption_at_bdnb: updated.energy_consumption_at_bdnb
+    });
+  });
+
+  describe('Present in LOVAC, missing from our database', () => {
+    let actual: ReadonlyArray<HousingRecordDBO>;
+
+    beforeAll(async () => {
+      actual = await Housing().whereIn(
+        ['geo_code', 'local_id'],
+        missingSourceHousings.map((sourceHousing) => [
+          sourceHousing.geo_code,
+          sourceHousing.local_id
+        ])
+      );
+    });
+
+    it('should import new housings', () => {
+      expect(actual).toHaveLength(missingSourceHousings.length);
+    });
+
+    it('should set their occupancy to "vacant"', () => {
+      expect(actual).toSatisfyAll<HousingRecordDBO>((housing) => {
+        return housing.occupancy === Occupancy.VACANT;
+      });
+    });
+
+    it('should set their status to "never contacted"', () => {
+      expect(actual).toSatisfyAll<HousingRecordDBO>((housing) => {
+        return housing.status === HousingStatus.NEVER_CONTACTED;
+      });
+    });
+  });
+
+  describe('Present in LOVAC, present in our database', () => {
+    it('should leave vacant housings’ occupancies and statuses untouched', async () => {
+      const actual = await refresh(vacantHousings);
+      expect(actual).toHaveLength(vacantHousings.length);
+      actual.forEach((actualHousing) => {
+        const housingBefore = housingsBefore.find(
+          (housing) => housing.id === actualHousing.id
+        );
+        expect(actualHousing).toMatchObject<Partial<HousingRecordDBO>>({
+          occupancy: housingBefore?.occupancy,
+          occupancy_source: housingBefore?.occupancyRegistered,
+          status: housingBefore?.status,
+          sub_status: housingBefore?.subStatus
+        });
+      });
+    });
+
+    it('should leave non-vacant, user-modified housing occupancies and statuses untouched', async () => {
+      const actual = await refresh(nonVacantUserModifiedHousings);
+      expect(actual).toHaveLength(nonVacantUserModifiedHousings.length);
+      actual.forEach((actualHousing) => {
+        const housingBefore = housingsBefore.find(
+          (housing) => housing.id === actualHousing.id
+        );
+        expect(actualHousing).toMatchObject<Partial<HousingRecordDBO>>({
+          occupancy: housingBefore?.occupancy,
+          occupancy_source: housingBefore?.occupancyRegistered,
+          status: housingBefore?.status,
+          sub_status: housingBefore?.subStatus
+        });
+      });
+    });
+
+    it('should set non-vacant, non-user-modified housings as vacant and never contacted', async () => {
+      const actual = await refresh(nonVacantNonUserModifiedHousings);
+      expect(actual).toHaveLength(nonVacantNonUserModifiedHousings.length);
+      actual.forEach((actualHousing) => {
+        expect(actualHousing).toMatchObject<Partial<HousingRecordDBO>>({
+          occupancy: Occupancy.VACANT,
+          status: HousingStatus.NEVER_CONTACTED,
+          sub_status: null
+        });
+      });
+
+      const actualEvents = await Events()
+        .join(
+          HOUSING_EVENTS_TABLE,
+          `${HOUSING_EVENTS_TABLE}.event_id`,
+          `${EVENTS_TABLE}.id`
+        )
+        .whereIn(
+          [
+            `${HOUSING_EVENTS_TABLE}.housing_geo_code`,
+            `${HOUSING_EVENTS_TABLE}.housing_id`
+          ],
+          actual.map((actualHousing) => [
+            actualHousing.geo_code,
+            actualHousing.id
+          ])
+        );
+      actual.forEach((actualHousing) => {
+        expect(actualEvents).toPartiallyContain<
+          Partial<EventRecordDBO<any> & HousingEventDBO>
+        >({
+          housing_geo_code: actualHousing.geo_code,
+          housing_id: actualHousing.id,
+          type: 'housing:occupancy-updated'
+        });
+        expect(actualEvents).toPartiallyContain<
+          Partial<EventRecordDBO<any> & HousingEventDBO>
+        >({
+          housing_geo_code: actualHousing.geo_code,
+          housing_id: actualHousing.id,
+          type: 'housing:status-updated'
+        });
+      });
+    });
+  });
+
+  function refresh(
+    housings: ReadonlyArray<Pick<HousingApi, 'id' | 'geoCode'>>
+  ): Promise<ReadonlyArray<HousingRecordDBO>> {
+    return Housing().whereIn(
+      ['geo_code', 'id'],
+      housings.map((housing) => [housing.geoCode, housing.id])
+    );
+  }
+
+  function toSourceHousing(housing: HousingApi): SourceHousing {
+    if (!housing.buildingId) {
+      throw new Error('housing.buildingId must be defined');
+    }
+    return {
+      ...genSourceHousing(),
+      geo_code: housing.geoCode,
+      local_id: housing.localId,
+      building_id: housing.buildingId,
+      occupancy_source: housing.occupancy
+    };
+  }
+});
+
+/**
+ * Write source housings as hive-partitioned parquet files
+ * (simulates the output of prepare-housings.sh)
+ */
+async function writeParquetDepts(
+  deptsDir: string,
+  sourceHousings: ReadonlyArray<SourceHousing>
+): Promise<void> {
+  const jsonlFile = path.join(deptsDir, '..', 'source-housings-test.jsonl');
+  fs.mkdirSync(path.dirname(jsonlFile), { recursive: true });
+  fs.writeFileSync(
+    jsonlFile,
+    sourceHousings.map((h) => JSON.stringify(h)).join('\n')
+  );
+
+  const instance = await DuckDBInstance.create(':memory:');
+  const conn = await instance.connect();
+  try {
+    await conn.run(`
+      COPY (
+        SELECT *, geo_code[1:2] AS dept
+        FROM read_json_auto('${jsonlFile}')
+      ) TO '${deptsDir}' (FORMAT PARQUET, PARTITION_BY (dept), OVERWRITE_OR_IGNORE);
+    `);
+  } finally {
+    conn.closeSync();
+    instance.closeSync();
+  }
+  fs.unlinkSync(jsonlFile);
+}

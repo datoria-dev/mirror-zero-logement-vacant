@@ -1,0 +1,78 @@
+name: Pull request
+
+on:
+  pull_request:
+    branches-ignore:
+      - prod
+    paths:
+      - frontend/**
+      - server/**
+      - packages/**
+
+jobs:
+  check-env-example:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Check .env.example completeness
+        run: bash tools/check-env-example.sh
+
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        node-version: [24.x]
+    services:
+      postgres:
+        image: postgis/postgis
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dev
+        ports:
+          - 5432:5432
+      s3:
+        image: adobe/s3mock:4.11.0
+        ports:
+          - 9090:9090
+        env:
+          initialBuckets: 'zerologementvacant'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Allows nx affected to compute which packages changed
+          fetch-depth: 0
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: yarn
+
+      - name: Install
+        run: yarn install --immutable
+        env:
+          CYPRESS_INSTALL_BINARY: 0
+
+      # Check source and **test** files
+      - name: Check types
+        run: yarn nx affected -t typecheck --base ${{ github.event.pull_request.base.sha }}
+        env:
+          DISABLE_ESLINT_PLUGIN: true
+          METABASE_TOKEN: token
+
+      - name: Lint
+        run: yarn lint && yarn format
+
+      - name: Test
+        run: yarn nx affected -t test --base ${{ github.event.pull_request.base.sha }} --test-timeout=60000
+        env:
+          LOG_LEVEL: fatal
+          NODE_OPTIONS: --experimental-transform-types
+          TZ: UTC

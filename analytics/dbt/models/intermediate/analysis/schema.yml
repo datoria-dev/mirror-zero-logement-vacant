@@ -1,0 +1,345 @@
+version: 2
+
+models:
+  - name: int_analysis_insee_features
+    description: "Consolidation des données INSEE par commune : densité, démographie, évolution population"
+    columns:
+      - name: geo_code
+        description: "Code commune INSEE"
+        tests:
+          - not_null
+          - unique
+      - name: densite_grid
+        description: "Niveau de densité (1-7)"
+      - name: densite_category
+        description: "Catégorie de densité (Dense, Intermédiaire, Peu dense)"
+      - name: population_2022
+        description: "Population municipale 2022"
+      - name: population_growth_rate_2019_2022
+        description: "Taux de croissance de la population 2019-2022 (%)"
+      - name: is_population_declining
+        description: "Indicateur de déclin démographique"
+
+  - name: int_analysis_prix_volumes_wide
+    description: "Prix et volumes des transactions immobilières par commune en format large (2019-2024)"
+    columns:
+      - name: geo_code
+        description: "Code commune INSEE"
+        tests:
+          - not_null
+          - unique
+      - name: evolution_prix_maisons_2019_2023_pct
+        description: "Évolution du prix médian des maisons 2019-2023 (%)"
+      - name: evolution_prix_appartements_2019_2023_pct
+        description: "Évolution du prix médian des appartements 2019-2023 (%)"
+      - name: total_mutations_maisons_2019_2024
+        description: "Total des mutations de maisons 2019-2024"
+      - name: total_mutations_appartements_2019_2024
+        description: "Total des mutations d'appartements 2019-2024"
+
+  - name: int_analysis_dvg_wide
+    description: "Données DVG/DV3F par commune en format large (2019-2024)"
+    columns:
+      - name: geo_code
+        description: "Code commune INSEE"
+        tests:
+          - not_null
+          - unique
+      - name: total_transactions_2019_2024
+        description: "Total des transactions 2019-2024"
+      - name: avg_annual_transactions
+        description: "Moyenne annuelle des transactions"
+      - name: evolution_prix_m2_2019_2023_pct
+        description: "Évolution du prix au m² 2019-2023 (%)"
+      - name: marche_dynamisme
+        description: "Niveau de dynamisme du marché (Très dynamique, Dynamique, Modéré, Faible)"
+
+  - name: int_analysis_city_features
+    description: "Table maître des caractéristiques par commune, consolidant toutes les sources externes"
+    columns:
+      - name: geo_code
+        description: "Code géographique INSEE"
+      - name: commune_name
+        description: "Nom de la commune"
+      - name: department_code
+        description: "Code département"
+      - name: region_code
+        description: "Code région"
+      - name: densite_grid
+        description: "Niveau de densité INSEE"
+      - name: loyer_median_m2
+        description: "Loyer médian au m² (carte des loyers)"
+      - name: loyer_predit_m2
+        description: "Loyer prédit au m² (modèle DGALN)"
+      - name: niveau_loyer
+        description: "Catégorie de niveau de loyer (Très élevé, Élevé, Moyen, Modéré, Faible)"
+      - name: loyer_confiance_prediction
+        description: "Niveau de confiance de la prédiction de loyer"
+      - name: taux_tfb
+        description: "Taux global de taxe foncière sur le bâti (%)"
+      - name: taux_tfnb
+        description: "Taux global de taxe foncière non bâti (%)"
+      - name: taux_th
+        description: "Taux global de taxe d'habitation (%)"
+      - name: teom_taux
+        description: "Taux de taxe d'enlèvement des ordures ménagères (%)"
+      - name: pression_fiscale_tfb_teom
+        description: "Indicateur de pression fiscale (TFB + TEOM)"
+      - name: th_surtaxe_residences_secondaires_pct
+        description: "Taux de surtaxe TH sur résidences secondaires (%)"
+      - name: taux_artificialisation_pct
+        description: "Taux d'artificialisation de la commune (%)"
+
+  - name: int_analysis_housing_with_out_flag
+    description: "Logements avec indicateur de sortie de vacance (is_housing_out)"
+    columns:
+      - name: housing_id
+        description: "Identifiant unique du logement"
+        tests:
+          - not_null
+          - unique
+      - name: geo_code
+        description: "Code géographique INSEE"
+      - name: city_code
+        description: "Code commune"
+      - name: is_housing_out
+        description: "Indicateur de sortie de vacance (1=sorti, 0=toujours vacant)"
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+      - name: vacancy_status_label
+        description: "Statut de vacance en texte"
+      - name: years_in_vacancy
+        description: "Nombre d'années de vacance"
+      - name: vacancy_duration_category
+        description: "Catégorie de durée de vacance"
+      - name: has_lovac_history
+        description: "Indicateur de présence dans LOVAC"
+
+  - name: int_analysis_housing_owners
+    description: |
+      Caractéristiques des propriétaires au niveau logement (rang=1 uniquement).
+      Prépare les features propriétaires pour l'analyse des déterminants de sortie de vacance.
+    columns:
+      - name: housing_id
+        description: "Identifiant unique du logement"
+      - name: owner_id
+        description: "Identifiant unique du propriétaire"
+      - name: owner_kind_class
+        description: "Type de propriétaire (Particulier, SCI, Personne morale, Indivision)"
+      - name: owner_is_individual
+        description: "TRUE si le propriétaire est un particulier"
+      - name: owner_is_sci
+        description: "TRUE si le propriétaire est une SCI"
+      - name: owner_is_company
+        description: "TRUE si le propriétaire est une personne morale"
+      - name: owner_is_indivision
+        description: "TRUE si le propriétaire est en indivision"
+      - name: owner_age
+        description: "Âge calculé du propriétaire (particuliers uniquement)"
+      - name: owner_age_category
+        description: "Catégorie d'âge (Moins de 40 ans, 40-59 ans, 60-74 ans, 75 ans et plus)"
+      - name: owner_generation
+        description: "Génération du propriétaire (Baby Boomer, Gen X, Millennial, etc.)"
+      - name: owner_location_relative_label
+        description: "Localisation relative (Même commune, Même département, Même région, Autre région)"
+      - name: owner_is_local
+        description: "TRUE si le propriétaire est dans la même commune ou département"
+      - name: owner_is_distant
+        description: "TRUE si le propriétaire est dans une autre région"
+      - name: owner_distance_km
+        description: "Distance propriétaire-logement en kilomètres"
+      - name: owner_distance_category
+        description: "Catégorie de distance (Moins de 5 km, 5-20 km, etc.)"
+      - name: property_right
+        description: "Type de droit de propriété"
+      - name: owner_is_full_owner
+        description: "TRUE si pleine propriété"
+      - name: owner_housing_count
+        description: "Nombre de logements possédés par ce propriétaire"
+      - name: owner_is_multi_owner
+        description: "TRUE si le propriétaire possède plus d'un logement"
+      - name: owner_contactable
+        description: "TRUE si le propriétaire a un email ou téléphone"
+
+  - name: int_analysis_establishments_zlv_usage
+    description: |
+      Metriques d'utilisation ZLV au niveau etablissement.
+      Agregat de toutes les activites par collectivite - MAJ situation, enrichissement proprietaires,
+      campagnes, groupes, documents, connexions utilisateurs.
+      Filtre sur les collectivites locales (CC, CU, ME, CA, Commune, SIVOM, CTU).
+    columns:
+      - name: establishment_id
+        description: "Identifiant unique de l'etablissement"
+        tests:
+          - not_null
+          - unique
+      - name: nom
+        description: "Nom de l'etablissement"
+      - name: ouvert
+        description: "TRUE si l'etablissement est disponible et a au moins 1 utilisateur"
+      - name: date_ouverture
+        description: "Date de premiere activation de l'etablissement"
+      - name: annee_ouverture
+        description: "Annee de premiere activation"
+      - name: utilisateurs_inscrits
+        description: "Nombre d'utilisateurs inscrits"
+      - name: date_derniere_connexion
+        description: "Date de derniere connexion d'un utilisateur"
+      - name: connecte_30_jours
+        description: "TRUE si au moins un utilisateur connecte dans les 30 derniers jours"
+      - name: connecte_60_jours
+        description: "TRUE si au moins un utilisateur connecte dans les 60 derniers jours"
+      - name: connecte_90_jours
+        description: "TRUE si au moins un utilisateur connecte dans les 90 derniers jours"
+      - name: connexions_30_jours
+        description: "Nombre d'utilisateurs actifs dans les 30 derniers jours (proxy)"
+      - name: connexions_60_jours
+        description: "Nombre d'utilisateurs actifs dans les 60 derniers jours (proxy)"
+      - name: connexions_90_jours
+        description: "Nombre d'utilisateurs actifs dans les 90 derniers jours (proxy)"
+      - name: logements_maj_situation
+        description: "Nombre de logements avec MAJ situation (suivi ou occupation)"
+      - name: logements_maj_occupation
+        description: "Nombre de logements avec MAJ occupation"
+      - name: logements_maj_suivi
+        description: "Nombre de logements avec MAJ suivi"
+      - name: logements_maj_non_suivi
+        description: "Nombre de logements avec dernier statut Non-suivi"
+      - name: logements_maj_en_attente
+        description: "Nombre de logements avec dernier statut En attente de retour"
+      - name: logements_maj_premier_contact
+        description: "Nombre de logements avec dernier statut Premier contact"
+      - name: logements_maj_suivi_en_cours
+        description: "Nombre de logements avec dernier statut Suivi en cours"
+      - name: logements_maj_suivi_termine
+        description: "Nombre de logements avec dernier statut Suivi termine"
+      - name: logements_maj_suivi_termine_sortis
+        description: "Nombre de logements Suivi termine avec sortie de vacance/passoire/objectif rempli"
+      - name: logements_maj_suivi_termine_fiabilises
+        description: "Nombre de logements Suivi termine fiabilises (n etait pas vacant/passoire)"
+      - name: logements_maj_bloque
+        description: "Nombre de logements avec dernier statut Bloque"
+      - name: logements_maj_mails
+        description: "Nombre de logements avec MAJ email proprietaire"
+      - name: logements_maj_phone
+        description: "Nombre de logements avec MAJ telephone proprietaire"
+      - name: logements_maj_owners
+        description: "Nombre de logements avec MAJ nom ou rang proprietaire"
+      - name: logements_maj_owners_address
+        description: "Nombre de logements avec MAJ adresse proprietaire"
+      - name: logements_maj_dpe
+        description: "Nombre de logements avec MAJ DPE (NULL - pas d evenements DPE dans ZLV)"
+      - name: logements_maj_notes
+        description: "Nombre de logements avec des notes utilisateur"
+      - name: logements_maj_documents
+        description: "Nombre de logements avec au moins 1 document attache"
+      - name: logements_maj_enrichissement
+        description: "Nombre total de logements avec MAJ enrichissement (mails + phone + owners + address + notes + documents)"
+      - name: documents_importes
+        description: "Nombre total de documents importes"
+      - name: date_dernier_document_importe
+        description: "Date du dernier document importe"
+      - name: logements_contactes_via_campagnes
+        description: "Nombre de logements contactes via campagnes envoyees"
+      - name: logements_exportes_via_groupes
+        description: "Nombre de logements exportes via groupes"
+      - name: logements_maj_situation_pct_parc_vacant_25
+        description: "Ratio logements MAJ situation / parc LOVAC 2025 (%)"
+      - name: logements_maj_situation_pct_parc_locatif_24
+        description: "Ratio logements MAJ situation / parc FF 2024 (%)"
+      - name: region
+        description: "Nom de la region de l etablissement"
+      - name: departement
+        description: "Nom du departement de l etablissement"
+      - name: type_detaille
+        description: "Type detaille de l etablissement (Metropole, CA, CC, etc.)"
+      - name: type_simple
+        description: "Type simple regroupe (Intercommunalite, Commune)"
+      - name: mails_utilisateurs
+        description: "Emails des utilisateurs de l etablissement"
+      - name: communes_inscrites
+        description: "Nombre de communes inscrites dans le territoire de l EPCI (NULL pour les communes)"
+      - name: communes_inscrites_pct
+        description: "Pourcentage de communes inscrites dans le territoire de l EPCI"
+      - name: intercommunalites_inscrites
+        description: "Nombre d intercommunalites inscrites dans le departement (NULL pour echelons locaux)"
+      - name: intercommunalites_inscrites_pct
+        description: "Pourcentage d intercommunalites inscrites dans le departement"
+      - name: departements_inscrits
+        description: "Nombre de departements inscrits dans la region (NULL pour echelons locaux)"
+      - name: departements_inscrits_pct
+        description: "Pourcentage de departements inscrits dans la region"
+      - name: sded_inscrits
+        description: "Nombre de SDED inscrits dans la region (NULL pour echelons locaux)"
+      - name: sded_inscrits_pct
+        description: "Pourcentage de SDED inscrits dans la region"
+
+  - name: int_analysis_housing_establishment_echelons
+    description: |
+      Mapping entre logements et etablissements par echelon.
+      Pour chaque logement, identifie l etablissement EPCI (CA/CC/CU/ME)
+      et l etablissement Commune correspondants via le geo_code.
+    columns:
+      - name: housing_id
+        description: "Identifiant unique du logement"
+        tests:
+          - not_null
+          - unique
+      - name: epci_establishment_id
+        description: "Identifiant de l etablissement EPCI (CA/CC/CU/ME) couvrant le logement"
+      - name: city_establishment_id
+        description: "Identifiant de l etablissement Commune couvrant le logement"
+
+  - name: int_analysis_housing_zlv_usage
+    description: |
+      Métriques d'utilisation de l'application ZLV au niveau logement.
+      Combine les données de campagnes, activation des établissements et pro-activité.
+    columns:
+      - name: housing_id
+        description: "Identifiant unique du logement"
+      - name: establishment_id
+        description: "Identifiant de l'établissement principal couvrant ce logement"
+      - name: was_contacted_by_zlv
+        description: "TRUE si le logement a reçu au moins une campagne ZLV"
+      - name: contact_count
+        description: "Nombre de contacts de campagne reçus"
+      - name: contact_intensity
+        description: "Intensité de contact (Non contacté, 1 contact, 2-3 contacts, 4+ contacts)"
+      - name: contact_recency_category
+        description: "Récence du contact (Récent, Moyen, Ancien, Jamais contacté)"
+      - name: total_campaigns_received
+        description: "Nombre total de campagnes reçues"
+      - name: has_status_update
+        description: "TRUE si le logement a eu une mise à jour de suivi"
+      - name: has_occupancy_update
+        description: "TRUE si le logement a eu une mise à jour d'occupation"
+      - name: has_any_update
+        description: "TRUE si le logement a eu une mise à jour quelconque"
+      - name: update_intensity
+        description: "Intensité des MAJ (Aucune MAJ, MAJ suivi, MAJ occupation, MAJ complète)"
+      - name: establishment_name
+        description: "Nom de l'établissement"
+      - name: establishment_kind
+        description: "Type d'établissement (CA, CC, CU, ME, Commune)"
+      - name: establishment_type_regroupe
+        description: "Type regroupé (Intercommunalité, Commune, DDT/M, Autre)"
+      - name: typologie_activation_simple
+        description: "Typologie d'activation de l'établissement (CT inactive, en analyse, en campagne, activée)"
+      - name: typologie_activation_detaillee
+        description: "Typologie d'activation détaillée"
+      - name: activation_level
+        description: "Niveau d'activation (1-5)"
+      - name: kind_pro_activity_quantile
+        description: "Catégorie de pro-activité par quantile"
+      - name: kind_pro_activity_ntile
+        description: "Catégorie de pro-activité par ntile"
+      - name: total_pro_activity_score
+        description: "Score total de pro-activité"
+      - name: pro_activity_level
+        description: "Niveau de pro-activité (1-4)"
+      - name: zlv_engagement_score
+        description: "Score d'engagement ZLV composite (0-10)"
+      - name: zlv_engagement_category
+        description: "Catégorie d'engagement ZLV (Aucun, Faible, Moyen, Fort)"

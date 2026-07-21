@@ -1,0 +1,36 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/healthcheck"
+    },
+    {
+      "path": "./packages/schemas"
+    },
+    {
+      "path": "./packages/models"
+    },
+    {
+      "path": "./packages/utils"
+    },
+    {
+      "path": "./server"
+    },
+    {
+      "path": "./frontend"
+    },
+    {
+      "path": "./packages/pdf"
+    },
+    {
+      "path": "./apps/front-e2e"
+    },
+    {
+      "path": "./packages/factories"
+    },
+    {
+      "path": "./apps/front-e2e-pw"
+    }
+  ]
+}

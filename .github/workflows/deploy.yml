@@ -1,0 +1,65 @@
+name: Deploy to Clever Cloud
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        type: string
+        required: true
+        description: The app name registered on Clever Cloud
+      alias:
+        type: string
+        required: true
+        description: The app alias registered on Clever Cloud
+      branch:
+        type: string
+        required: true
+        description: The branch to deploy
+      environment:
+        type: string
+        required: false
+        description: The environment to deploy
+
+    secrets:
+      CLEVER_SECRET:
+        required: true
+        description: The Clever Cloud secret
+      CLEVER_TOKEN:
+        required: true
+        description: The Clever Cloud token
+      CLEVER_ORG:
+        required: true
+        description: The Clever Cloud organization ID
+
+jobs:
+  deploy:
+    if: ${{ github.ref_name == inputs.branch }}
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ vars.HOST }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install clever-tools
+        run: npm install -g clever-tools@4.8.0
+
+      - name: Deploy
+        env:
+          CLEVER_SECRET: ${{ secrets.CLEVER_SECRET }}
+          CLEVER_TOKEN: ${{ secrets.CLEVER_TOKEN }}
+          ORGA_ID: ${{ secrets.CLEVER_ORG }}
+          APP_NAME: ${{ inputs.app }}
+          APP_ALIAS: ${{ inputs.alias }}
+        run: |
+          clever link --org "$ORGA_ID" --alias "$APP_ALIAS" "$APP_NAME"
+          clever deploy --alias "$APP_ALIAS" --same-commit-policy rebuild

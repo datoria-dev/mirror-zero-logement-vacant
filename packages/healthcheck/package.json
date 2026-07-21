@@ -1,0 +1,31 @@
+{
+  "name": "@zerologementvacant/healthcheck",
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/lib/index.d.ts",
+      "default": "./dist/lib/index.js"
+    }
+  },
+  "peerDependencies": {
+    "express": "4.22.0"
+  },
+  "devDependencies": {
+    "@tsconfig/node24": "24.0.4",
+    "@types/async": "3.2.25",
+    "@types/express": "4.17.25",
+    "@types/pg": "8.20.0",
+    "@types/supertest": "6.0.3",
+    "express": "4.22.2",
+    "jest-extended": "4.0.2",
+    "supertest": "7.2.2"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1045.0",
+    "@zerologementvacant/utils": "workspace:*",
+    "async": "3.2.6",
+    "pg": "8.20.0"
+  }
+}

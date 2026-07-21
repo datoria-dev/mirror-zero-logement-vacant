@@ -1,0 +1,54 @@
+import { constants } from 'node:http2';
+
+import { createLogger, LogLevel } from '@zerologementvacant/utils';
+import express from 'express';
+import request from 'supertest';
+
+import { postgresCheck } from '../checks/postgres';
+import { CheckStatus, healthcheck } from '../healthcheck';
+
+describe('Healthcheck API', () => {
+  it('should return HTTP 200 OK', async () => {
+    const app = express();
+    const logger = createLogger('test', {
+      isProduction: false,
+      level: LogLevel.FATAL
+    });
+    app.get(
+      '/',
+      healthcheck({
+        checks: [postgresCheck('postgres://postgres:postgres@localhost:5432')],
+        logger
+      })
+    );
+
+    const { body, status } = await request(app).get('/');
+
+    expect(status).toBe(constants.HTTP_STATUS_OK);
+    expect(body.checks).toSatisfyAll<CheckStatus>((check) => {
+      return check.status === 'up';
+    });
+  });
+
+  it('should return HTTP 503 if a service is down', async () => {
+    const app = express();
+    const logger = createLogger('test', {
+      isProduction: false,
+      level: LogLevel.FATAL
+    });
+    app.get(
+      '/',
+      healthcheck({
+        checks: [postgresCheck('postgres://postgres:postgres@localhost:5000')],
+        logger
+      })
+    );
+
+    const { body, status } = await request(app).get('/');
+
+    expect(status).toBe(constants.HTTP_STATUS_SERVICE_UNAVAILABLE);
+    expect(body.checks).toIncludeSameMembers<CheckStatus>([
+      { name: 'postgres', status: 'down' }
+    ]);
+  });
+});

@@ -1,0 +1,217 @@
+import http from 'node:http';
+import util from 'node:util';
+
+import {
+  healthcheck,
+  brevoCheck,
+  postgresCheck,
+  s3Check
+} from '@zerologementvacant/healthcheck';
+import { toNodeHandler } from 'better-auth/node';
+import cors from 'cors';
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+import getPort from 'get-port';
+import helmet from 'helmet';
+
+import RouteNotFoundError from '~/errors/routeNotFoundError';
+import { auth } from '~/infra/auth';
+import config from '~/infra/config';
+import gracefulShutdown from '~/infra/graceful-shutdown';
+import { logger } from '~/infra/logger';
+import { setupApiDocs } from '~/infra/openapi';
+import sentry from '~/infra/sentry';
+import errorHandler from '~/middlewares/error-handler';
+import protectedRouter from '~/routers/protected';
+import unprotectedRouter from '~/routers/unprotected';
+
+export interface Server {
+  app: http.Server;
+  start(port?: number): Promise<void>;
+  testing(): Promise<string>;
+  stop(): Promise<void>;
+}
+
+export function createServer(): Server {
+  const app = express();
+
+  // Settings must appear before everything else
+  // otherwise express will instantiate a router
+  app.set('trust proxy', 1);
+
+  sentry.init(app);
+
+  app.use(
+    helmet({
+      // Security headers - explicit configuration
+      hsts: {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true
+      },
+      frameguard: {
+        action: 'deny'
+      },
+      noSniff: true,
+      crossOriginEmbedderPolicy: false,
+      crossOriginResourcePolicy: false,
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            'https://stats.beta.gouv.fr',
+            'https://client.crisp.chat',
+            'https://www.googletagmanager.com',
+            'https://googleads.g.doubleclick.net',
+            'https://cdn.jsdelivr.net/npm/@scalar/api-reference'
+          ],
+          frameSrc: [
+            'https://zerologementvacant-metabase-prod.osc-secnum-fr1.scalingo.io',
+            'https://zerologementvacant.crisp.help'
+          ],
+          styleSrc: [
+            "'self'",
+            "'unsafe-inline'",
+            'https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.css',
+            'https://client.crisp.chat/static/stylesheets/client_default.css',
+            'https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css'
+          ],
+          imgSrc: [
+            "'self'",
+            'https://stats.beta.gouv.fr',
+            'https://image.crisp.chat',
+            'https://client.crisp.chat',
+            'https://www.google.fr',
+            'https://www.google.com',
+            'data:'
+          ],
+          fontSrc: [
+            "'self'",
+            'https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.woff',
+            'https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.woff2',
+            'https://cdn.jsdelivr.net/npm/remixicon@2.5.0/fonts/remixicon.ttf',
+            'https://client.crisp.chat',
+            'https://fonts.scalar.com',
+            'data:'
+          ],
+          objectSrc: ["'self'"],
+          mediaSrc: ["'self'"],
+          connectSrc: [
+            "'self'",
+            'https://stats.beta.gouv.fr',
+            'https://api-adresse.data.gouv.fr',
+            'wss://client.relay.crisp.chat',
+            'https://client.crisp.chat',
+            'https://openmaptiles.geo.data.gouv.fr',
+            'https://openmaptiles.github.io',
+            'https://unpkg.com',
+            'https://cdn.jsdelivr.net',
+            'https://api.scalar.com'
+          ],
+          workerSrc: ["'self'", 'blob:']
+        }
+      }
+    })
+  );
+
+  app.use(
+    cors({
+      origin: config.app.allowedOrigins,
+      credentials: true,
+      // Keep allowedHeaders unset so cors reflects the browser's requested
+      // headers, including Sentry's sentry-trace and baggage propagation.
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+    })
+  );
+
+  app.all('/auth/*', toNodeHandler(auth));
+
+  app.use(express.json({ limit: '10mb' }));
+
+  app.use(
+    rateLimit({
+      windowMs: 5 * 60 * 1000, // 5 minutes window
+      max: config.rateLimit.max, // start blocking after X requests for windowMs time
+      message: 'Too many request from this address, try again later please.',
+      standardHeaders: true,
+      legacyHeaders: false
+    })
+  );
+
+  app.get(
+    '/',
+    healthcheck({
+      checks: [
+        brevoCheck(config.mailer.apiKey ?? '', {
+          enable:
+            config.app.env === 'production' &&
+            config.mailer.provider === 'brevo'
+        }),
+        postgresCheck(config.db.url),
+        s3Check(config.s3)
+      ],
+      logger
+    })
+  );
+
+  // API documentation (disabled by default, enable with SWAGGER_ENABLED=true)
+  setupApiDocs(app);
+
+  app.use('/', unprotectedRouter);
+  app.use('/', protectedRouter);
+
+  app.all('*', (request) => {
+    throw new RouteNotFoundError(request);
+  });
+  sentry.errorHandler(app);
+  app.use(errorHandler());
+
+  const server = http.createServer(app);
+  gracefulShutdown(server);
+
+  async function start(port = config.app.port): Promise<void> {
+    const listen = util.promisify((port: number, cb: () => void) => {
+      return server.listen(port, cb);
+    });
+
+    try {
+      logger.debug('Starting server with config', config);
+      await listen(port);
+      logger.info(`Server listening on ${port}`);
+    } catch (error) {
+      logger.error('Unable to start the server', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Like {@link start} but starts on a random port and returns the URL.
+   * Useful for testing purposes.
+   */
+  async function testing(): Promise<string> {
+    const port = await getPort();
+    await start(port);
+    return `http://localhost:${port}`;
+  }
+
+  async function stop(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          logger.error('Error while stopping the server', error);
+          return reject(error);
+        }
+        logger.info('Server stopped');
+        resolve();
+      });
+    });
+  }
+
+  return {
+    app: server,
+    start,
+    stop,
+    testing
+  };
+}

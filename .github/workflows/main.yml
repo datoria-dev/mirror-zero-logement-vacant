@@ -1,0 +1,132 @@
+name: Main
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - apps/**
+      - frontend/**
+      - server/**
+      - packages/**
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [24.x]
+    services:
+      postgres:
+        image: postgis/postgis
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: dev
+        ports:
+          - 5432:5432
+      s3:
+        image: adobe/s3mock:4.11.0
+        ports:
+          - 9090:9090
+        env:
+          initialBuckets: 'zerologementvacant'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: yarn
+
+      - name: Install
+        run: yarn install --immutable
+        env:
+          CYPRESS_INSTALL_BINARY: 0
+
+      # Check source and **test** files
+      - name: Check types
+        run: yarn typecheck
+        env:
+          DISABLE_ESLINT_PLUGIN: true
+          METABASE_TOKEN: token
+
+      - name: Lint
+        run: yarn lint && yarn format
+
+      - name: Test
+        run: yarn coverage --test-timeout=60000
+        env:
+          LOG_LEVEL: fatal
+          VITE_API_URL: http://localhost:3001
+
+      - name: Upload frontend coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: ./frontend/coverage/coverage-final.json
+          flags: frontend
+
+      - name: Upload packages coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: packages
+          flags: packages
+
+      - name: Upload server coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          disable_search: true
+          files: ./server/coverage/coverage-final.json
+          flags: server
+
+  knip:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use Node.js 24.x
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: yarn
+
+      - name: Install
+        run: yarn install --immutable
+        env:
+          CYPRESS_INSTALL_BINARY: 0
+
+      - name: Knip
+        run: yarn knip
+
+  deploy-front-staging:
+    uses: ./.github/workflows/deploy.yml
+    needs: [build]
+    with:
+      app: Front staging
+      alias: front-staging
+      branch: main
+      environment: Staging
+    secrets: inherit
+
+  deploy-api-staging:
+    uses: ./.github/workflows/deploy.yml
+    needs: [build]
+    with:
+      app: API staging
+      alias: api-staging
+      branch: main
+    secrets: inherit

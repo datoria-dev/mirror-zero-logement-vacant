@@ -1,0 +1,582 @@
+import { faker } from '@faker-js/faker/locale/fr';
+import * as turf from '@turf/turf';
+import {
+  ACTIVE_OWNER_RANKS,
+  AddressKinds,
+  DatafoncierHousing,
+  ENERGY_CONSUMPTION_VALUES,
+  ESTABLISHMENT_KIND_VALUES,
+  EventType,
+  LOCALITY_KIND_VALUES,
+  OWNER_ENTITY_VALUES,
+  PRECISION_CATEGORY_VALUES,
+  PROPERTY_RIGHT_VALUES,
+  READ_WRITE_OCCUPANCY_VALUES,
+  RELATIVE_LOCATION_VALUES,
+  TIME_PER_WEEK_VALUES,
+  UserAccountDTO
+} from '@zerologementvacant/models';
+import {
+  genBuildingDTO,
+  genCampaignDTO,
+  genDatafoncierHousing as genDatafoncierHousingDTO,
+  genDocumentDTO,
+  genEventDTO,
+  genGeoCode,
+  genGroupDTO,
+  genHousingDTO,
+  genNoteDTO,
+  genOwnerDTO,
+  genUserDTO,
+  type GenBuildingDtoOptions
+} from '@zerologementvacant/models/fixtures';
+import { addHours } from 'date-fns';
+import type { BBox } from 'geojson';
+import { padStart } from 'lodash-es';
+import randomstring from 'randomstring';
+import { MarkRequired } from 'ts-essentials';
+import { v4 as uuidv4 } from 'uuid';
+
+import { logger } from '~/infra/logger';
+import { AddressApi } from '~/models/AddressApi';
+import { BuildingApi } from '~/models/BuildingApi';
+import { CampaignApi } from '~/models/CampaignApi';
+import { DocumentApi } from '~/models/DocumentApi';
+import { DraftApi } from '~/models/DraftApi';
+import { EstablishmentApi } from '~/models/EstablishmentApi';
+import { EventApi, fromEventDTO } from '~/models/EventApi';
+import { GeoPerimeterApi } from '~/models/GeoPerimeterApi';
+import { GroupApi, toGroupDTO } from '~/models/GroupApi';
+import { HousingApi } from '~/models/HousingApi';
+import { HousingDocumentApi } from '~/models/HousingDocumentApi';
+import { HousingOwnerApi } from '~/models/HousingOwnerApi';
+import { LocalityApi } from '~/models/LocalityApi';
+import { fromNoteDTO, HousingNoteApi, NoteApi } from '~/models/NoteApi';
+import { OwnerApi } from '~/models/OwnerApi';
+import { PrecisionApi } from '~/models/PrecisionApi';
+import { ProspectApi } from '~/models/ProspectApi';
+import {
+  RESET_LINK_EXPIRATION,
+  RESET_LINK_LENGTH,
+  ResetLinkApi
+} from '~/models/ResetLinkApi';
+import { SenderApi } from '~/models/SenderApi';
+import {
+  SIGNUP_LINK_EXPIRATION,
+  SIGNUP_LINK_LENGTH,
+  SignupLinkApi
+} from '~/models/SignupLinkApi';
+import { fromUserDTO, toUserDTO, UserApi } from '~/models/UserApi';
+import { DatafoncierOwner } from '~/scripts/shared';
+
+logger.debug(`Seed: ${faker.seed()}`);
+
+export const genEmail = () => faker.internet.email();
+
+/**
+ * A locality string of 3 numeric characters
+ * @param locality
+ */
+export const genInvariant = (
+  locality: string = faker.string.numeric(3)
+): string => locality + faker.string.alpha(7);
+
+export const genLocalId = (department: string, invariant: string): string =>
+  department + invariant;
+
+export const genNumber = (length = 10) => {
+  return Number(
+    randomstring.generate({
+      length,
+      charset: 'numeric'
+    })
+  );
+};
+
+export const genBoolean = () => faker.datatype.boolean();
+
+export const genSiren = () => genNumber(9).toString();
+export function oneOf<T>(array: Array<T>): T {
+  return faker.helpers.arrayElement(array);
+}
+export function manyOf<T>(array: Array<T>, nb: number): T[] {
+  return faker.helpers.arrayElements(array, nb);
+}
+
+export const genLocalityApi = (geoCode = genGeoCode()): LocalityApi => {
+  return {
+    id: uuidv4(),
+    geoCode,
+    name: faker.location.city(),
+    kind:
+      LOCALITY_KIND_VALUES.length > 0
+        ? faker.helpers.arrayElement([null, ...LOCALITY_KIND_VALUES])
+        : null,
+    taxKind: 'None'
+  };
+};
+
+export const genEstablishmentApi = (
+  ...geoCodes: string[]
+): EstablishmentApi => {
+  const city = faker.location.city();
+  return {
+    id: uuidv4(),
+    name: city,
+    shortName: city,
+    siren: genSiren().toString(),
+    geoCodes: geoCodes.length > 0 ? geoCodes : [genGeoCode()],
+    available: true,
+    kind: faker.helpers.arrayElement(ESTABLISHMENT_KIND_VALUES),
+    source: 'seed'
+  };
+};
+
+export function genUserApi(establishmentId: string): UserApi {
+  return {
+    ...fromUserDTO(genUserDTO()),
+    password: '123QWEasd',
+    establishmentId: establishmentId
+  };
+}
+
+export function genDocumentApi(overrides?: Partial<DocumentApi>): DocumentApi {
+  // If creator is provided, use their establishmentId unless explicitly overridden
+  const establishmentId =
+    overrides?.establishmentId ??
+    overrides?.creator?.establishmentId ??
+    uuidv4();
+  const creator = overrides?.creator ?? genUserApi(establishmentId);
+  const baseDocument = genDocumentDTO(creator, { id: establishmentId });
+  const id = overrides?.id ?? baseDocument.id;
+
+  return {
+    id,
+    filename: overrides?.filename ?? baseDocument.filename,
+    s3Key: overrides?.s3Key ?? `documents/${faker.string.uuid()}/${id}`,
+    contentType: overrides?.contentType ?? baseDocument.contentType,
+    sizeBytes: overrides?.sizeBytes ?? baseDocument.sizeBytes,
+    establishmentId,
+    createdBy: overrides?.createdBy ?? creator.id,
+    createdAt: overrides?.createdAt ?? baseDocument.createdAt,
+    updatedAt: overrides?.updatedAt ?? baseDocument.updatedAt,
+    deletedAt: overrides?.deletedAt ?? null,
+    creator
+  };
+}
+
+export const genUserAccountDTO: UserAccountDTO = {
+  firstName: faker.person.firstName(),
+  lastName: faker.person.lastName(),
+  phone: faker.phone.number(),
+  position: faker.person.jobType(),
+  timePerWeek: faker.helpers.arrayElement(TIME_PER_WEEK_VALUES)
+};
+
+export const genProspectApi = (
+  establishment: EstablishmentApi
+): ProspectApi => {
+  return {
+    email: genEmail(),
+    establishment: {
+      id: establishment.id,
+      siren: establishment.siren
+    },
+    hasAccount: true,
+    hasCommitment: true,
+    lastAccountRequestAt: new Date()
+  };
+};
+
+export const genOwnerApi = (): OwnerApi => ({
+  ...genOwnerDTO(),
+  entity: faker.helpers.arrayElement([null, ...OWNER_ENTITY_VALUES])
+});
+
+export const genAddressApi = (
+  refId: string,
+  addressKind: AddressKinds
+): MarkRequired<AddressApi, 'longitude' | 'latitude'> => {
+  const houseNumber = faker.location.buildingNumber();
+  const street = faker.location.street();
+  const postalCode = faker.location.zipCode();
+  const city = faker.location.city();
+  const address = `${houseNumber} ${street} ${postalCode} ${city}`;
+  return {
+    refId,
+    addressKind,
+    banId: faker.string.numeric(16),
+    label: address,
+    houseNumber,
+    street,
+    postalCode,
+    city,
+    cityCode: null,
+    latitude: faker.location.latitude({
+      min: FRANCE_BBOX[1],
+      max: FRANCE_BBOX[3]
+    }),
+    longitude: faker.location.longitude({
+      min: FRANCE_BBOX[0],
+      max: FRANCE_BBOX[2]
+    }),
+    score: faker.number.float({ min: 0, max: 1, fractionDigits: 2 }),
+    lastUpdatedAt: faker.date.recent().toJSON()
+  };
+};
+
+export const genHousingOwnerApi = (
+  housing: HousingApi,
+  owner: OwnerApi
+): HousingOwnerApi => ({
+  ...owner,
+  ownerId: owner.id,
+  housingGeoCode: housing.geoCode,
+  housingId: housing.id,
+  rank: faker.helpers.arrayElement(ACTIVE_OWNER_RANKS),
+  origin: 'lovac',
+  idprocpte: faker.string.alphanumeric(11),
+  idprodroit: faker.string.alphanumeric(13),
+  locprop: faker.helpers.arrayElement([1, 2, 3, 4, 5, 6, 9]),
+  propertyRight: faker.helpers.arrayElement(PROPERTY_RIGHT_VALUES),
+  startDate: faker.date.past(),
+  endDate: null,
+  relativeLocation: faker.helpers.arrayElement(RELATIVE_LOCATION_VALUES),
+  absoluteDistance: null
+});
+
+export function genBuildingApi(options?: GenBuildingDtoOptions): BuildingApi {
+  const building = genBuildingDTO(options);
+  const hasEnergyConsumption = building.dpe !== null;
+
+  return {
+    ...building,
+    ges: hasEnergyConsumption
+      ? {
+          class: faker.helpers.arrayElement(ENERGY_CONSUMPTION_VALUES)
+        }
+      : null,
+    heating: faker.helpers.arrayElement([
+      'Gaz naturel',
+      'Électricité',
+      'GPL',
+      'Fioul domestique',
+      'Bois - Bûches'
+    ])
+  };
+}
+
+export const genHousingApi = (
+  geoCode?: string,
+  building?: BuildingApi
+): Omit<HousingApi, 'owner'> & { owner: OwnerApi } => {
+  const owner = genOwnerApi();
+  const housing = genHousingDTO(geoCode);
+
+  return {
+    ...housing,
+    owner,
+    localityKind: faker.helpers.maybe(
+      () => faker.helpers.arrayElement(['ACV', 'PVD']),
+      { probability: 0.2 }
+    ),
+    occupancyRegistered: faker.helpers.arrayElement(
+      READ_WRITE_OCCUPANCY_VALUES
+    ),
+    buildingVacancyRate: faker.number.float(),
+    contactCount: genNumber(1),
+    geolocation: null,
+    buildingId: building?.id ?? null,
+    buildingGroupId: null,
+    buildingHousingCount: null,
+    geoPerimeters: [],
+    precisions: []
+  };
+};
+
+export const genCampaignApi = (
+  establishmentId: string,
+  createdBy: UserApi,
+  group?: GroupApi
+): CampaignApi => {
+  const dto = genCampaignDTO(
+    group ? toGroupDTO(group) : undefined,
+    toUserDTO(createdBy)
+  );
+  return {
+    ...dto,
+    createdBy,
+    userId: createdBy.id,
+    establishmentId
+  };
+};
+
+export const FRANCE_BBOX: BBox = [-1.69, 43.19, 6.8, 49.49];
+
+export const genGeoPerimeterApi = (
+  establishmentId: string,
+  creator: UserApi
+): GeoPerimeterApi => {
+  return {
+    id: uuidv4(),
+    establishmentId,
+    geometry: turf.multiPolygon(
+      turf
+        .randomPolygon(1, {
+          bbox: FRANCE_BBOX,
+          max_radial_length: 3
+        })
+        .features.map((feature) => {
+          return feature.geometry.coordinates;
+        })
+    ).geometry,
+    name: faker.helpers.arrayElement([
+      'OPAH',
+      'OPAH-RU',
+      'Zone Commerciale Linéaire'
+    ]),
+    kind: randomstring.generate(),
+    createdAt: faker.date.past().toJSON(),
+    createdBy: creator?.id
+  };
+};
+
+export const genResetLinkApi = (userId: string): ResetLinkApi => {
+  return {
+    id: randomstring.generate({
+      length: RESET_LINK_LENGTH,
+      charset: 'alphanumeric'
+    }),
+    userId,
+    createdAt: new Date(),
+    expiresAt: addHours(new Date(), RESET_LINK_EXPIRATION),
+    usedAt: null
+  };
+};
+
+export const genSignupLinkApi = (prospectEmail: string): SignupLinkApi => ({
+  id: randomstring.generate({
+    length: SIGNUP_LINK_LENGTH,
+    charset: 'alphanumeric'
+  }),
+  prospectEmail,
+  expiresAt: addHours(new Date(), SIGNUP_LINK_EXPIRATION)
+});
+
+type EventOptions<Type extends EventType> = MarkRequired<
+  Pick<EventApi<Type>, 'type' | 'creator' | 'nextOld' | 'nextNew'>,
+  'creator'
+>;
+export function genEventApi<Type extends EventType>(
+  options: EventOptions<Type>
+): EventApi<Type> {
+  return fromEventDTO(
+    genEventDTO<Type>({
+      ...options,
+      creator: toUserDTO(options.creator)
+    })
+  );
+}
+
+export const genGroupApi = (
+  creator: UserApi,
+  establishment: EstablishmentApi
+): GroupApi => {
+  const dto = genGroupDTO(toUserDTO(creator));
+  return {
+    id: dto.id,
+    title: dto.title,
+    description: dto.description,
+    housingCount: dto.housingCount,
+    ownerCount: dto.ownerCount,
+    userId: creator.id,
+    createdAt: new Date(dto.createdAt),
+    createdBy: creator,
+    establishmentId: establishment.id,
+    exportedAt: null,
+    archivedAt: dto.archivedAt ? new Date(dto.archivedAt) : null
+  };
+};
+
+export const genDatafoncierOwner = (
+  idprocpte = randomstring.generate(11),
+  rank = 1
+): DatafoncierOwner => {
+  const idcom = genGeoCode();
+  return {
+    idprodroit: `${padStart(rank.toString(10), 1, '0')}${idprocpte}`,
+    idprocpte,
+    idpersonne: randomstring.generate(8),
+    idvoie: randomstring.generate(9),
+    idcom,
+    idcomtxt: faker.location.city(),
+    ccodep: idcom.substring(0, 2),
+    ccodir: randomstring.generate(1),
+    ccocom: idcom.substring(2, 5),
+    dnupro: randomstring.generate(6),
+    dnulp: randomstring.generate({
+      length: 1,
+      charset: 'numeric'
+    }),
+    ccocif: randomstring.generate(4),
+    dnuper: randomstring.generate(6),
+    ccodro: randomstring.generate(1),
+    ccodrotxt: randomstring.generate(64),
+    typedroit: randomstring.generate(1),
+    ccodem: randomstring.generate(1),
+    ccodemtxt: randomstring.generate(28),
+    gdesip: randomstring.generate(1),
+    gtoper: randomstring.generate(1),
+    ccoqua: randomstring.generate(1),
+    dnatpr: randomstring.generate(3),
+    dnatprtxt: randomstring.generate(53),
+    ccogrm: randomstring.generate(2),
+    ccogrmtxt: randomstring.generate(46),
+    dsglpm: randomstring.generate(10),
+    dforme: randomstring.generate(4),
+    ddenom: faker.person.fullName().substring(0, 60),
+    gtyp3: randomstring.generate(1),
+    gtyp4: randomstring.generate(1),
+    gtyp5: randomstring.generate(1),
+    gtyp6: randomstring.generate(1),
+    dlign3: [
+      faker.location.buildingNumber().substring(0, 4),
+      faker.location.street()
+    ]
+      .join(' ')
+      .substring(0, 30),
+    dlign4: [idcom, faker.location.city()].join(' ').substring(0, 30),
+    dlign5: null,
+    dlign6: null,
+    ccopay: randomstring.generate(3),
+    ccodep1a2: randomstring.generate(2),
+    ccodira: randomstring.generate(1),
+    ccocomadr: randomstring.generate(3),
+    ccovoi: randomstring.generate(5),
+    ccoriv: randomstring.generate(4),
+    dnvoiri: randomstring.generate(4),
+    dindic: randomstring.generate(1),
+    ccopos: randomstring.generate(5),
+    dqualp: randomstring.generate(3),
+    dnomlp: randomstring.generate(30),
+    dprnlp: randomstring.generate(15),
+    jdatnss: faker.date
+      .birthdate()
+      .toISOString()
+      .substring(0, 10)
+      .split('-')
+      .reverse()
+      .join('/'),
+    dldnss: randomstring.generate(58),
+    dsiren: randomstring.generate(9),
+    topja: randomstring.generate(1),
+    datja: randomstring.generate(8),
+    dformjur: randomstring.generate(4),
+    dnomus: randomstring.generate(60),
+    dprnus: randomstring.generate(40),
+    locprop: randomstring.generate(1),
+    locproptxt: randomstring.generate(21),
+    catpro2: randomstring.generate(2),
+    catpro2txt: randomstring.generate(100),
+    catpro3: randomstring.generate(3),
+    catpro3txt: randomstring.generate(105),
+    idpk: genNumber(5)
+  };
+};
+
+export const genDatafoncierHousing = (
+  idprocpte: string,
+  idbat: string
+): DatafoncierHousing => {
+  return genDatafoncierHousingDTO(idprocpte, idbat);
+};
+
+export const genNoteApi = (creator: UserApi): NoteApi =>
+  fromNoteDTO(genNoteDTO(toUserDTO(creator)));
+
+export const genHousingNoteApi = (
+  creator: UserApi,
+  housing: HousingApi
+): HousingNoteApi => ({
+  ...genNoteApi(creator),
+  housingGeoCode: housing.geoCode,
+  housingId: housing.id
+});
+
+export function genDraftApi(
+  establishment: Pick<EstablishmentApi, 'id'>,
+  sender: SenderApi
+): DraftApi {
+  return {
+    id: uuidv4(),
+    subject: faker.lorem.sentence(),
+    body: faker.lorem.paragraph(),
+    logo: [],
+    logoNext: [null, null],
+    createdAt: new Date().toJSON(),
+    updatedAt: new Date().toJSON(),
+    sender,
+    senderId: sender.id,
+    writtenAt: faker.date.recent().toJSON().substring(0, 'yyyy-mm-dd'.length),
+    writtenFrom: faker.location.streetAddress({ useFullAddress: true }),
+    establishmentId: establishment.id
+  };
+}
+
+export function genSenderApi(
+  establishment: Pick<EstablishmentApi, 'id'>
+): SenderApi {
+  const firstName = faker.person.firstName();
+  const lastName = faker.person.lastName();
+  return {
+    id: uuidv4(),
+    name: `${faker.location.zipCode()} ${faker.location.city()}`,
+    service: faker.company.name(),
+    firstName,
+    lastName,
+    address: faker.location.streetAddress({ useFullAddress: true }),
+    email: faker.internet.email({ firstName, lastName }),
+    phone: faker.phone.number(),
+    signatories: [
+      {
+        firstName: faker.helpers.maybe(() => faker.person.firstName()) ?? null,
+        lastName: faker.helpers.maybe(() => faker.person.lastName()) ?? null,
+        role: faker.helpers.maybe(() => faker.person.jobTitle()) ?? null,
+        file: null,
+        document: null
+      },
+      {
+        firstName: faker.helpers.maybe(() => faker.person.firstName()) ?? null,
+        lastName: faker.helpers.maybe(() => faker.person.lastName()) ?? null,
+        role: faker.helpers.maybe(() => faker.person.jobTitle()) ?? null,
+        file: null,
+        document: null
+      }
+    ],
+    createdAt: faker.date.past().toJSON(),
+    updatedAt: faker.date.recent().toJSON(),
+    establishmentId: establishment.id
+  };
+}
+
+export function genPrecisionApi(order: number): PrecisionApi {
+  return {
+    id: faker.string.uuid(),
+    category: faker.helpers.arrayElement(PRECISION_CATEGORY_VALUES),
+    label: faker.lorem.word(),
+    order
+  };
+}
+
+export function genHousingDocumentApi(
+  overrides?: Partial<HousingDocumentApi>
+): HousingDocumentApi {
+  const baseDocument = genDocumentApi(overrides);
+
+  return {
+    ...baseDocument,
+    housingId: overrides?.housingId ?? faker.string.uuid(),
+    housingGeoCode:
+      overrides?.housingGeoCode ?? faker.location.zipCode('######')
+  };
+}

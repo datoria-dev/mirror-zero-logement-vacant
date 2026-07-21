@@ -1,0 +1,9 @@
+*.duckdb
+.duckdb
+*.db
+.ipynb_checkpoints/
+*.csv
+.tmp
+.log
+dagster/logs/event.log
+*.parquet

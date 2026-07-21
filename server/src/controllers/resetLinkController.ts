@@ -1,0 +1,62 @@
+import { constants } from 'http2';
+
+import { addHours } from 'date-fns';
+import { Request, Response } from 'express';
+import randomstring from 'randomstring';
+
+import ResetLinkExpiredError from '~/errors/resetLinkExpiredError';
+import ResetLinkMissingError from '~/errors/resetLinkMissingError';
+import {
+  hasExpired,
+  RESET_LINK_EXPIRATION,
+  RESET_LINK_LENGTH,
+  ResetLinkApi
+} from '~/models/ResetLinkApi';
+import resetLinkRepository from '~/repositories/resetLinkRepository';
+import userRepository from '~/repositories/userRepository';
+
+import mailService from '../services/mailService';
+
+async function create(request: Request, response: Response) {
+  const { email } = request.body;
+  const user = await userRepository.getByEmail(email);
+
+  if (user) {
+    const resetLink: ResetLinkApi = {
+      id: randomstring.generate({
+        charset: 'alphanumeric',
+        length: RESET_LINK_LENGTH
+      }),
+      userId: user.id,
+      createdAt: new Date(),
+      expiresAt: addHours(new Date(), RESET_LINK_EXPIRATION),
+      usedAt: null
+    };
+    await resetLinkRepository.insert(resetLink);
+    await mailService.sendPasswordReset(resetLink.id, {
+      recipients: [user.email]
+    });
+  }
+  // Avoid returning the reset link in the body because it would compromise
+  // the security of the password reset flow.
+  response.status(constants.HTTP_STATUS_OK).send();
+}
+
+async function show(request: Request, response: Response) {
+  const { id } = request.params;
+  const link = await resetLinkRepository.get(id);
+  if (!link) {
+    throw new ResetLinkMissingError();
+  }
+
+  if (hasExpired(link)) {
+    throw new ResetLinkExpiredError();
+  }
+
+  response.status(constants.HTTP_STATUS_OK).json(link);
+}
+
+export default {
+  create,
+  show
+};

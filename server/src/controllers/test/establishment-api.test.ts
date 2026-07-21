@@ -1,0 +1,229 @@
+import { constants } from 'http2';
+
+import { faker } from '@faker-js/faker/locale/fr';
+import { fc, test } from '@fast-check/vitest';
+import {
+  ESTABLISHMENT_KIND_VALUES,
+  EstablishmentFiltersDTO,
+  UserRole,
+  type EstablishmentDTO
+} from '@zerologementvacant/models';
+import { GEO_CODE_REGEXP } from '@zerologementvacant/schemas';
+import request from 'supertest';
+
+import { createServer } from '~/infra/server';
+import { EstablishmentApi } from '~/models/EstablishmentApi';
+import type { UserApi } from '~/models/UserApi';
+import {
+  Establishments,
+  formatEstablishmentApi
+} from '~/repositories/establishmentRepository';
+import { toUserDBO, Users } from '~/repositories/userRepository';
+import { genEstablishmentApi, genUserApi } from '~/test/testFixtures';
+import { tokenProvider } from '~/test/testUtils';
+
+describe('Establishment API', () => {
+  let url: string;
+
+  beforeAll(async () => {
+    url = await createServer().testing();
+  });
+
+  describe('GET /establishments', () => {
+    const testRoute = '/establishments';
+
+    const establishments: EstablishmentApi[] = Array.from({ length: 10 }).map(
+      () => genEstablishmentApi()
+    );
+
+    beforeAll(async () => {
+      await Establishments().insert(establishments.map(formatEstablishmentApi));
+    });
+
+    test.prop<EstablishmentFiltersDTO>({
+      id: fc.option(fc.array(fc.uuid({ version: 4 }), { minLength: 1 }), {
+        nil: undefined
+      }),
+      available: fc.option(fc.boolean(), { nil: undefined }),
+      kind: fc.option(
+        fc.array(fc.constantFrom(...ESTABLISHMENT_KIND_VALUES), {
+          minLength: 1
+        }),
+        {
+          nil: undefined
+        }
+      ),
+      name: fc.option(fc.string(), { nil: undefined }),
+      geoCodes: fc.option(
+        fc.array(fc.stringMatching(GEO_CODE_REGEXP), {
+          minLength: 5,
+          maxLength: 5
+        }),
+        { nil: undefined }
+      ),
+      siren: fc.option(
+        fc.array(fc.stringMatching(/^[0-9]{9}$/), { minLength: 1 }),
+        {
+          nil: undefined
+        }
+      ),
+      query: fc.option(fc.stringMatching(/^[a-zA-Z0-9\s]*$/), {
+        nil: undefined
+      }),
+      related: fc.option(fc.uuid({ version: 4 }), { nil: undefined })
+    })('should validate inputs', async (query) => {
+      const { status } = await request(url)
+        .get(testRoute)
+        .query({
+          id: query.id?.join(','),
+          available: query.available,
+          kind: query.kind?.join(','),
+          name: query.name,
+          geoCodes: query.geoCodes?.join(','),
+          siren: query.siren?.join(','),
+          query: query.query,
+          related: query.related
+        });
+
+      expect(status).toBe(constants.HTTP_STATUS_OK);
+    });
+
+    it('should return an empty array where no establishment is found', async () => {
+      const { body, status } = await request(url)
+        .get(testRoute)
+        .query({
+          query: faker.string.sample(10)
+        });
+
+      expect(status).toBe(constants.HTTP_STATUS_OK);
+      expect(body).toEqual([]);
+    });
+
+    it('should list available establishments', async () => {
+      const { body, status } = await request(url)
+        .get(testRoute)
+        .query({ available: true });
+
+      expect(status).toBe(constants.HTTP_STATUS_OK);
+      expect(body.length).toBeGreaterThan(0);
+      expect(body).toSatisfyAll<EstablishmentApi>((establishment) => {
+        return establishment.available;
+      });
+    });
+
+    it('should search establishments by query', async () => {
+      const [firstEstablishment] = establishments;
+
+      const { body, status } = await request(url)
+        .get(testRoute)
+        .query({
+          query: firstEstablishment.name.substring(1, 3)
+        });
+
+      expect(status).toBe(constants.HTTP_STATUS_OK);
+      expect(body).toPartiallyContain({
+        id: firstEstablishment.id,
+        name: firstEstablishment.name
+      });
+    });
+
+    it('should list establishments by geo code', async () => {
+      const [firstEstablishment] = establishments;
+
+      const { body, status } = await request(url)
+        .get(testRoute)
+        .query({
+          geoCodes: faker.helpers.arrayElement(firstEstablishment.geoCodes)
+        });
+
+      expect(status).toBe(constants.HTTP_STATUS_OK);
+      expect(body).toPartiallyContain({
+        id: firstEstablishment.id,
+        name: firstEstablishment.name
+      });
+    });
+
+    it('should list establishments by related establishment', async () => {
+      const establishments: ReadonlyArray<EstablishmentApi> = [
+        genEstablishmentApi('75001', '75002'),
+        genEstablishmentApi('75002', '75003'),
+        genEstablishmentApi('69001', '69002')
+      ];
+      await Establishments().insert(establishments.map(formatEstablishmentApi));
+
+      const [relatedEstablishment] = establishments;
+
+      const { body, status } = await request(url).get(testRoute).query({
+        related: relatedEstablishment.id
+      });
+
+      expect(status).toBe(constants.HTTP_STATUS_OK);
+      expect(body.length).toBeGreaterThan(0);
+      expect(body).toSatisfyAll<EstablishmentDTO>((actual) => {
+        return actual.geoCodes.some((actualGeoCode) =>
+          relatedEstablishment.geoCodes.includes(actualGeoCode)
+        );
+      });
+    });
+
+    describe('Include users', () => {
+      const establishment = genEstablishmentApi();
+      const user: UserApi = {
+        ...genUserApi(establishment.id),
+        role: UserRole.USUAL
+      };
+
+      beforeAll(async () => {
+        await Establishments().insert(formatEstablishmentApi(establishment));
+        await Users().insert(toUserDBO(user));
+      });
+
+      it('should include users if the user is authenticated', async () => {
+        const { body, status } = await request(url)
+          .get(testRoute)
+          .use(tokenProvider(user));
+
+        expect(status).toBe(constants.HTTP_STATUS_OK);
+        expect(body).toSatisfyAll<EstablishmentDTO>((establishment) => {
+          return establishment.users !== undefined;
+        });
+      });
+
+      it('should not include users if the user is anonymous', async () => {
+        const { body, status } = await request(url)
+          .get(testRoute)
+          .query({ include: 'users' });
+
+        expect(status).toBe(constants.HTTP_STATUS_OK);
+        expect(body).toSatisfyAll<EstablishmentDTO>((establishment) => {
+          return establishment.users === undefined;
+        });
+      });
+    });
+  });
+
+  describe('GET /establishments/:id', () => {
+    const testRoute = (id: string) => `/establishments/${id}`;
+
+    it('should return 404 if the establishment does not exist', async () => {
+      const { status } = await request(url).get(testRoute(faker.string.uuid()));
+
+      expect(status).toBe(constants.HTTP_STATUS_NOT_FOUND);
+    });
+
+    it('should return the establishment', async () => {
+      const establishment = genEstablishmentApi();
+      await Establishments().insert(formatEstablishmentApi(establishment));
+
+      const { body, status } = await request(url).get(
+        testRoute(establishment.id)
+      );
+
+      expect(status).toBe(constants.HTTP_STATUS_OK);
+      expect(body).toMatchObject({
+        id: establishment.id,
+        name: establishment.name
+      });
+    });
+  });
+});

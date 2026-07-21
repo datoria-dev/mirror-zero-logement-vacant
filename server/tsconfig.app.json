@@ -1,0 +1,41 @@
+{
+  "extends": ["@tsconfig/node24/tsconfig.json", "../tsconfig.base.json"],
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist/app",
+    "paths": {
+      "~/*": ["./src/*"]
+    },
+    "tsBuildInfoFile": "dist/app/tsconfig.tsbuildinfo",
+    "typeRoots": ["node_modules", "src/types"],
+    "types": ["express", "express-jwt"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/test/global-setup.ts",
+    "src/test/setup-env.ts",
+    "src/test/setup-tests.ts",
+    "src/test/testUtils.ts"
+  ],
+  "references": [
+    {
+      "path": "../packages/utils/tsconfig.lib.json"
+    },
+    {
+      "path": "../packages/schemas/tsconfig.lib.json"
+    },
+    {
+      "path": "../packages/pdf/tsconfig.lib.json"
+    },
+    {
+      "path": "../packages/models/tsconfig.lib.json"
+    },
+    {
+      "path": "../packages/healthcheck/tsconfig.lib.json"
+    },
+    {
+      "path": "../packages/factories/tsconfig.lib.json"
+    }
+  ]
+}

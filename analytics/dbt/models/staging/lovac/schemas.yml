@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: stg_lovac_2019
+    config:
+      meta:
+        +schema: stg
+        +enabled: true
+  - name: stg_lovac_2020
+    config:
+      meta:
+        +schema: stg
+        +enabled: true
+  - name: stg_lovac_2021
+    config:
+      meta:
+        +schema: stg
+        +enabled: true
+  - name: stg_lovac_2022
+    config:
+      meta:
+        +schema: stg
+        +enabled: true
+  - name: stg_lovac_2023
+    config:
+      meta:
+        +schema: stg
+        +enabled: true
+  - name: stg_lovac_2024
+    config:
+      meta:
+        +schema: stg
+        +enabled: true
+  - name: stg_lovac_2025
+    config:
+      meta:
+        +schema: stg
+        +enabled: true
+  - name: stg_lovac_2026
+    config:
+      meta:
+        +schema: stg
+        +enabled: true

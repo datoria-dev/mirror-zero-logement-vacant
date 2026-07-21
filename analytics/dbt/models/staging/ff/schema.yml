@@ -1,0 +1,8 @@
+version: 2
+
+
+models:
+  - name: stg_ff_building_2024
+  - name: stg_ff_housing_2024
+  - name: stg_ff_owners_2024
+    

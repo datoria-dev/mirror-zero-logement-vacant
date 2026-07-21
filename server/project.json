@@ -1,0 +1,92 @@
+{
+  "name": "@zerologementvacant/server",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "server/src",
+  "projectType": "application",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/esbuild:esbuild",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "platform": "node",
+        "outputPath": "{projectRoot}/dist/app",
+        "format": ["esm"],
+        "bundle": true,
+        "skipTypeCheck": true,
+        "declaration": false,
+        "main": "{projectRoot}/src/index.ts",
+        "tsConfig": "{projectRoot}/tsconfig.app.json",
+        "deleteOutputPath": true,
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "{projectRoot}/src/infra/database/migrations",
+            "output": "./migrations"
+          },
+          {
+            "glob": "**/*",
+            "input": "{projectRoot}/src/infra/database/seeds",
+            "output": "./seeds"
+          },
+          {
+            "glob": "*.otf",
+            "input": "packages/draft/src/fonts",
+            "output": "./fonts"
+          },
+          {
+            "glob": "openapi.yaml",
+            "input": "{projectRoot}/src/infra",
+            "output": "./"
+          }
+        ],
+        "esbuildOptions": {
+          "sourcemap": true,
+          "outExtension": {
+            ".js": ".js"
+          },
+          "external": ["@zerologementvacant/pdf"]
+        }
+      },
+      "configurations": {
+        "development": {},
+        "production": {
+          "esbuildOptions": {
+            "sourcemap": false,
+            "outExtension": {
+              ".js": ".js"
+            },
+            "external": ["@zerologementvacant/pdf"]
+          }
+        }
+      }
+    },
+
+    "dev": {
+      "continuous": true,
+      "executor": "@nx/js:node",
+      "defaultConfiguration": "development",
+      "dependsOn": ["build"],
+      "options": {
+        "buildTarget": "@zerologementvacant/server:build"
+      },
+      "configurations": {
+        "development": {
+          "buildTarget": "@zerologementvacant/server:build:development"
+        },
+        "production": {
+          "buildTarget": "@zerologementvacant/server:build:production"
+        }
+      }
+    },
+
+    "start": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "node server/dist/app/index.js"
+      }
+    }
+  }
+}

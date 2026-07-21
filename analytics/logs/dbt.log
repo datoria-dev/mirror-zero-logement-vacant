@@ -1,0 +1,96 @@
+[0m18:28:01.687304 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c37b6d0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c3a3590>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c112410>]}
+
+
+============================== 18:28:01.704938 | 871bc02f-c9f3-4753-925a-eb71a5b9e846 ==============================
+[0m18:28:01.704938 [info ] [MainThread]: Running with dbt=1.9.10
+[0m18:28:01.705301 [debug] [MainThread]: running dbt with arguments {'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])', 'send_anonymous_usage_stats': 'True', 'log_cache_events': 'False', 'write_json': 'True', 'target_path': 'None', 'introspect': 'True', 'static_parser': 'True', 'fail_fast': 'False', 'log_format': 'default', 'empty': 'False', 'log_path': 'logs', 'cache_selected_only': 'False', 'use_colors': 'True', 'invocation_command': 'dbt run --select intermediate.analysis.int_analysis_housing_with_out_flag --target prod', 'partial_parse': 'True', 'indirect_selection': 'eager', 'quiet': 'False', 'use_experimental_parser': 'False', 'no_print': 'None', 'printer_width': '80', 'debug': 'False', 'version_check': 'True', 'profiles_dir': '/Users/raphaelcourivaud/.dbt', 'warn_error': 'None'}
+[0m18:28:01.705650 [error] [MainThread]: Encountered an error:
+Runtime Error
+  No dbt_project.yml found at expected path /Users/raphaelcourivaud/dev/zlv/zero-logement-vacant/analytics/dbt_project.yml
+  Verify that each entry within packages.yml (and their transitive dependencies) contains a file named dbt_project.yml
+  
+[0m18:28:01.705980 [debug] [MainThread]: Resource report: {"command_name": "run", "command_success": false, "command_wall_clock_time": 0.057762876, "process_in_blocks": "0", "process_kernel_time": 0.331561, "process_mem_max_rss": "132071424", "process_out_blocks": "0", "process_user_time": 1.167296}
+[0m18:28:01.706241 [debug] [MainThread]: Command `dbt run` failed at 18:28:01.706186 after 0.06 seconds
+[0m18:28:01.706485 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c3a3c90>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c3a3ad0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c37bf90>]}
+[0m18:28:01.706693 [debug] [MainThread]: Flushing usage events
+[0m18:28:03.500112 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m21:17:30.359322 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d736cd0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d6c2f10>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d736e90>]}
+
+
+============================== 21:17:30.362288 | acf2715f-16d6-40f5-b787-a9486506b2c9 ==============================
+[0m21:17:30.362288 [info ] [MainThread]: Running with dbt=1.9.10
+[0m21:17:30.362653 [debug] [MainThread]: running dbt with arguments {'debug': 'False', 'quiet': 'False', 'indirect_selection': 'eager', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])', 'warn_error': 'None', 'cache_selected_only': 'False', 'printer_width': '80', 'log_path': 'logs', 'no_print': 'None', 'invocation_command': 'dbt build --select stg_external_cerema_prix_volumes_appartements stg_external_cerema_prix_volumes_bati stg_external_cerema_prix_volumes_maisons int_analysis_prix_volumes_wide int_analysis_city_features marts_analysis_city_aggregated marts_analysis_housing_out_features', 'profiles_dir': '/Users/raphaelcourivaud/.dbt', 'version_check': 'True', 'fail_fast': 'False', 'use_experimental_parser': 'False', 'partial_parse': 'True', 'empty': 'False', 'log_format': 'default', 'log_cache_events': 'False', 'introspect': 'True', 'write_json': 'True', 'target_path': 'None', 'static_parser': 'True', 'use_colors': 'True', 'send_anonymous_usage_stats': 'True'}
+[0m21:17:30.363055 [error] [MainThread]: Encountered an error:
+Runtime Error
+  No dbt_project.yml found at expected path /Users/raphaelcourivaud/dev/zlv/zero-logement-vacant/analytics/dbt_project.yml
+  Verify that each entry within packages.yml (and their transitive dependencies) contains a file named dbt_project.yml
+  
+[0m21:17:30.363418 [debug] [MainThread]: Resource report: {"command_name": "build", "command_success": false, "command_wall_clock_time": 0.039697956, "process_in_blocks": "0", "process_kernel_time": 0.143482, "process_mem_max_rss": "108494848", "process_out_blocks": "0", "process_user_time": 0.594275}
+[0m21:17:30.363681 [debug] [MainThread]: Command `dbt build` failed at 21:17:30.363630 after 0.04 seconds
+[0m21:17:30.363929 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d767ad0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d767b10>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104fd1bd0>]}
+[0m21:17:30.364151 [debug] [MainThread]: Flushing usage events
+[0m21:17:31.942139 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m22:00:45.086655 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10daba490>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10daef610>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10daf9150>]}
+
+
+============================== 22:00:45.090072 | 99273b59-3769-4ee6-9c93-08081892a473 ==============================
+[0m22:00:45.090072 [info ] [MainThread]: Running with dbt=1.9.10
+[0m22:00:45.090409 [debug] [MainThread]: running dbt with arguments {'profiles_dir': '/Users/raphaelcourivaud/.dbt', 'log_path': 'logs', 'warn_error': 'None', 'version_check': 'True', 'partial_parse': 'True', 'log_format': 'default', 'fail_fast': 'False', 'use_experimental_parser': 'False', 'introspect': 'True', 'quiet': 'False', 'write_json': 'True', 'static_parser': 'True', 'debug': 'False', 'send_anonymous_usage_stats': 'True', 'use_colors': 'True', 'invocation_command': 'dbt run --select stg_lovac_2026+ int_lovac_fil_2026+ int_lovac_ex_2026+ int_lovac_history_housing+ int_lovac_geo_code+ int_zlovac+ int_zlovac_owner_housing_scored+ int_zlovac_owner_housing+', 'empty': 'False', 'log_cache_events': 'False', 'no_print': 'None', 'cache_selected_only': 'False', 'indirect_selection': 'eager', 'target_path': 'None', 'printer_width': '80', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])'}
+[0m22:00:45.090742 [error] [MainThread]: Encountered an error:
+Runtime Error
+  No dbt_project.yml found at expected path /Users/raphaelcourivaud/dev/zlv/zero-logement-vacant/analytics/dbt_project.yml
+  Verify that each entry within packages.yml (and their transitive dependencies) contains a file named dbt_project.yml
+  
+[0m22:00:45.091048 [debug] [MainThread]: Resource report: {"command_name": "run", "command_success": false, "command_wall_clock_time": 0.047859125, "process_in_blocks": "0", "process_kernel_time": 0.204445, "process_mem_max_rss": "111525888", "process_out_blocks": "0", "process_user_time": 0.643597}
+[0m22:00:45.091273 [debug] [MainThread]: Command `dbt run` failed at 22:00:45.091226 after 0.05 seconds
+[0m22:00:45.091481 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10daef910>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10daf9010>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x105138a90>]}
+[0m22:00:45.091668 [debug] [MainThread]: Flushing usage events
+[0m22:00:47.030966 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m07:20:42.258983 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10a0db510>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10a0abe50>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10a043650>]}
+
+
+============================== 07:20:42.262264 | a4647452-9242-4828-b35b-98451bb37e72 ==============================
+[0m07:20:42.262264 [info ] [MainThread]: Running with dbt=1.9.10
+[0m07:20:42.262589 [debug] [MainThread]: running dbt with arguments {'log_path': 'logs', 'debug': 'False', 'warn_error': 'None', 'static_parser': 'True', 'partial_parse': 'True', 'indirect_selection': 'eager', 'printer_width': '80', 'target_path': 'None', 'send_anonymous_usage_stats': 'True', 'introspect': 'True', 'log_format': 'default', 'use_experimental_parser': 'False', 'use_colors': 'True', 'profiles_dir': '/Users/raphaelcourivaud/.dbt', 'version_check': 'True', 'invocation_command': 'dbt test --target prod --select int_zlovac_owner_housing int_zlovac_owners int_zlovac', 'fail_fast': 'False', 'write_json': 'True', 'quiet': 'False', 'no_print': 'None', 'cache_selected_only': 'False', 'log_cache_events': 'False', 'empty': 'None', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])'}
+[0m07:20:42.262913 [error] [MainThread]: Encountered an error:
+Runtime Error
+  No dbt_project.yml found at expected path /Users/raphaelcourivaud/dev/zlv/zero-logement-vacant/analytics/dbt_project.yml
+  Verify that each entry within packages.yml (and their transitive dependencies) contains a file named dbt_project.yml
+  
+[0m07:20:42.263222 [debug] [MainThread]: Resource report: {"command_name": "test", "command_success": false, "command_wall_clock_time": 0.049760874, "process_in_blocks": "0", "process_kernel_time": 0.180685, "process_mem_max_rss": "110444544", "process_out_blocks": "0", "process_user_time": 0.576631}
+[0m07:20:42.263445 [debug] [MainThread]: Command `dbt test` failed at 07:20:42.263401 after 0.05 seconds
+[0m07:20:42.263648 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10a0d8c10>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10a0eb850>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10a0de450>]}
+[0m07:20:42.263836 [debug] [MainThread]: Flushing usage events
+[0m07:20:43.979285 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m21:47:51.612714 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c3b8d90>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c3f4810>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c3f5890>]}
+
+
+============================== 21:47:51.616801 | 85d679ac-e4e4-4c83-a593-b1aa44da6351 ==============================
+[0m21:47:51.616801 [info ] [MainThread]: Running with dbt=1.9.10
+[0m21:47:51.617305 [debug] [MainThread]: running dbt with arguments {'static_parser': 'True', 'invocation_command': 'dbt run --select int_zlovac_owner_matching int_zlovac_owner_housing int_zlovac_unique_owners int_zlovac_owners --target prod', 'empty': 'False', 'send_anonymous_usage_stats': 'True', 'log_path': 'logs', 'no_print': 'None', 'log_cache_events': 'False', 'cache_selected_only': 'False', 'printer_width': '80', 'version_check': 'True', 'write_json': 'True', 'profiles_dir': '/Users/raphaelcourivaud/.dbt', 'log_format': 'default', 'indirect_selection': 'eager', 'use_colors': 'True', 'target_path': 'None', 'introspect': 'True', 'warn_error': 'None', 'quiet': 'False', 'debug': 'False', 'use_experimental_parser': 'False', 'partial_parse': 'True', 'fail_fast': 'False', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])'}
+[0m21:47:51.617745 [error] [MainThread]: Encountered an error:
+Runtime Error
+  No dbt_project.yml found at expected path /Users/raphaelcourivaud/dev/zlv/zero-logement-vacant/analytics/dbt_project.yml
+  Verify that each entry within packages.yml (and their transitive dependencies) contains a file named dbt_project.yml
+  
+[0m21:47:51.618096 [debug] [MainThread]: Resource report: {"command_name": "run", "command_success": false, "command_wall_clock_time": 0.057467293, "process_in_blocks": "0", "process_kernel_time": 0.264366, "process_mem_max_rss": "115802112", "process_out_blocks": "0", "process_user_time": 0.800503}
+[0m21:47:51.618362 [debug] [MainThread]: Command `dbt run` failed at 21:47:51.618315 after 0.06 seconds
+[0m21:47:51.618581 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c3f5e10>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c3f5410>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x103054d10>]}
+[0m21:47:51.618783 [debug] [MainThread]: Flushing usage events
+[0m21:47:52.189288 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m09:56:37.186999 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10b5c2fd0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10b59b290>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10b5f7950>]}
+
+
+============================== 09:56:37.190709 | b1fd13b9-b2e8-4964-8842-cf400e708681 ==============================
+[0m09:56:37.190709 [info ] [MainThread]: Running with dbt=1.9.10
+[0m09:56:37.191063 [debug] [MainThread]: running dbt with arguments {'version_check': 'True', 'log_path': 'logs', 'partial_parse': 'True', 'introspect': 'True', 'quiet': 'False', 'use_colors': 'True', 'send_anonymous_usage_stats': 'True', 'cache_selected_only': 'False', 'fail_fast': 'False', 'invocation_command': 'dbt run --select int_zlovac_owner_matching int_zlovac_owner_housing int_zlovac_unique_owners int_zlovac_owners int_zlovac_housing int_zlovac_buildings --target prod', 'warn_error': 'None', 'empty': 'False', 'use_experimental_parser': 'False', 'no_print': 'None', 'target_path': 'None', 'profiles_dir': '/Users/raphaelcourivaud/.dbt', 'log_format': 'default', 'printer_width': '80', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])', 'static_parser': 'True', 'write_json': 'True', 'log_cache_events': 'False', 'debug': 'False', 'indirect_selection': 'eager'}
+[0m09:56:37.191425 [error] [MainThread]: Encountered an error:
+Runtime Error
+  No dbt_project.yml found at expected path /Users/raphaelcourivaud/dev/zlv/zero-logement-vacant/analytics/dbt_project.yml
+  Verify that each entry within packages.yml (and their transitive dependencies) contains a file named dbt_project.yml
+  
+[0m09:56:37.191768 [debug] [MainThread]: Resource report: {"command_name": "run", "command_success": false, "command_wall_clock_time": 0.054954957, "process_in_blocks": "0", "process_kernel_time": 0.2095, "process_mem_max_rss": "111017984", "process_out_blocks": "0", "process_user_time": 0.613964}
+[0m09:56:37.191998 [debug] [MainThread]: Command `dbt run` failed at 09:56:37.191951 after 0.06 seconds
+[0m09:56:37.192230 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10b60b850>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10b5c89d0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10b5f6450>]}
+[0m09:56:37.192421 [debug] [MainThread]: Flushing usage events
+[0m09:56:37.752562 [debug] [MainThread]: An error was encountered while trying to flush usage events

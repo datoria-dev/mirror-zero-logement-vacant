@@ -1,0 +1,703 @@
+import { Readable } from 'node:stream';
+import { ReadableStream } from 'node:stream/web';
+
+import { AddressKinds, OwnerEntity } from '@zerologementvacant/models';
+import { Knex } from 'knex';
+import _ from 'lodash';
+import { match, Pattern } from 'ts-pattern';
+
+import db, {
+  ConflictOptions,
+  groupBy,
+  onConflict,
+  where
+} from '~/infra/database';
+import { withinTransaction } from '~/infra/database/transaction';
+import { createLogger } from '~/infra/logger';
+import { AddressApi } from '~/models/AddressApi';
+import { HousingApi } from '~/models/HousingApi';
+import { HousingOwnerApi } from '~/models/HousingOwnerApi';
+import { OwnerApi } from '~/models/OwnerApi';
+import { PaginatedResultApi } from '~/models/PaginatedResultApi';
+import { paginate, type PaginationApi } from '~/models/PaginationApi';
+import { compact } from '~/utils/object';
+
+import {
+  AddressDBO,
+  banAddressesTable,
+  parseAddressApi
+} from './banAddressesRepository';
+import { campaignsHousingTable } from './campaignHousingRepository';
+import { GROUPS_HOUSING_TABLE } from './groupRepository';
+import {
+  fromRelativeLocationDBO,
+  HousingOwnerDBO,
+  housingOwnersTable
+} from './housingOwnerRepository';
+import { housingTable, ownerHousingJoinClause } from './housingRepository';
+
+const logger = createLogger('ownerRepository');
+
+export const ownerTable = 'owners';
+export const Owners = (transaction = db) => transaction<OwnerDBO>(ownerTable);
+
+export interface OwnerRecordDBO {
+  id: string;
+  idpersonne: string | null;
+  full_name: string;
+  birth_date: Date | string | null;
+  administrator: string | null;
+  siren: string | null;
+  address_dgfip: string[] | null;
+  additional_address: string | null;
+  email: string | null;
+  phone: string | null;
+  data_source: string | null;
+  kind_class: string | null;
+  entity: OwnerEntity | null;
+  username: string | null;
+  created_at: Date | string | null;
+  updated_at: Date | string | null;
+  is_multi_owner: boolean | null;
+}
+
+export interface OwnerDBO extends OwnerRecordDBO {
+  ban?: AddressDBO;
+  /**
+   * @deprecated See {@link ban}
+   */
+  postal_code?: string;
+  /**
+   * @deprecated See {@link ban}
+   */
+  house_number?: string;
+  /**
+   * @deprecated See {@link ban}
+   */
+  street?: string;
+  /**
+   * @deprecated See {@link ban}
+   */
+  city?: string;
+  /**
+   * @deprecated See {@link ban}
+   */
+  score?: number;
+}
+
+interface OwnerFilters {
+  fullName?: string;
+  /**
+   * Pass a string or an array of strings to filter by idpersonne.
+   * Pass `true` to filter owners that have an idpersonne (not null).
+   */
+  idpersonne?: string | string[] | boolean;
+  campaignId?: string;
+  groupId?: string;
+}
+
+interface FindOptions {
+  search?: string;
+  filters?: OwnerFilters;
+  groupBy?: Array<keyof OwnerDBO>;
+  includes?: OwnerInclude[];
+  pagination?: PaginationApi;
+}
+
+async function find(opts?: FindOptions): Promise<OwnerApi[]> {
+  logger.debug('Finding owners...', opts);
+  const whereOptions = where<OwnerFilters>(['fullName']);
+
+  const owners = await Owners()
+    .select(`${ownerTable}.*`)
+    .where(whereOptions(opts?.filters ?? {}))
+    .modify(filter(opts?.filters))
+    .modify(search(opts?.search ?? null))
+    .modify(include(opts?.includes ?? []))
+    .modify(paginate(opts?.pagination))
+    .orderBy('full_name');
+
+  logger.debug(`Found ${owners.length} owners`, opts);
+  return owners.map(parseOwnerApi);
+}
+
+async function count(opts?: FindOptions): Promise<number> {
+  logger.debug('Counting owners...', opts);
+  const whereOptions = where<OwnerFilters>(['fullName']);
+
+  const result = await Owners()
+    .count('id')
+    .where(whereOptions(opts?.filters ?? {}))
+    .modify(filter(opts?.filters))
+    .modify(search(opts?.search ?? null))
+    .first();
+
+  const total = Number(result?.count ?? 0);
+  logger.debug(`Counted ${total} owners`, opts);
+  return total;
+}
+
+const get = async (ownerId: string): Promise<OwnerApi | null> => {
+  const owner = await Owners()
+    .select(`${ownerTable}.*`)
+    .modify(include(['banAddress']))
+    .where('id', ownerId)
+    .first();
+  return owner ? parseOwnerApi(owner) : null;
+};
+
+type StreamOptions = FindOptions;
+
+function stream(
+  options?: StreamOptions
+): ReadableStream<OwnerApi & { housings?: ReadonlyArray<HousingApi> }> {
+  const stream = Owners()
+    .select(`${ownerTable}.*`)
+    .modify(include(options?.includes ?? []))
+    .modify(filter(options?.filters))
+    .modify(groupBy<OwnerDBO>(options?.groupBy))
+    .orderBy('full_name')
+    .stream()
+    .map(parseHousingOwnerApi);
+
+  return Readable.toWeb(stream);
+}
+
+interface FindOneOptions extends Partial<
+  Pick<OwnerApi, 'id' | 'idpersonne' | 'fullName' | 'rawAddress'>
+> {
+  birthDate?: Date;
+}
+
+async function findOne(opts: FindOneOptions): Promise<OwnerApi | null> {
+  const owner = await Owners()
+    .where(
+      compact({
+        idpersonne: opts.idpersonne,
+        full_name: opts.fullName,
+        address_dgfip: opts.rawAddress,
+        birth_date: opts.birthDate
+      })
+    )
+    .first();
+  return owner ? parseOwnerApi(owner) : null;
+}
+
+function search(query: string | null) {
+  return (builder: Knex.QueryBuilder) => {
+    if (query) {
+      const tsQuery = query
+        .trim()
+        .split(/\s+/)
+        .map((term) => `${term}:*`) // permet le préfixe (ex: dupont:* = dupont, dupontet...)
+        .join(' & '); // opérateur logique AND entre les mots
+
+      builder.whereRaw(`full_name_fts @@ to_tsquery('simple', ?)`, [tsQuery]);
+    }
+  };
+}
+
+/**
+ * @deprecated Use {@link find} with filters instead
+ * @param q
+ * @param page
+ * @param perPage
+ * @returns
+ */
+const searchOwners = async (
+  q: string,
+  page?: number,
+  perPage?: number
+): Promise<PaginatedResultApi<OwnerApi>> => {
+  const tsQuery = q
+    .trim()
+    .split(/\s+/)
+    .map((term) => `${term}:*`) // permet le préfixe (ex: dupont:* = dupont, dupontet...)
+    .join(' & '); // opérateur logique AND entre les mots
+
+  const filterQuery = db(ownerTable)
+    .select('*')
+    .whereRaw(`full_name_fts @@ to_tsquery('simple', ?)`, [tsQuery])
+    .orderBy('id', 'desc');
+
+  const filteredCount = await db(ownerTable)
+    .whereRaw(`full_name_fts @@ to_tsquery('simple', ?)`, [tsQuery])
+    .count('id')
+    .first()
+    .then((row) => Number(row?.count));
+
+  const totalCount = await db(ownerTable)
+    .count('id')
+    .first()
+    .then((row) => Number(row?.count));
+
+  const results = await filterQuery.modify((queryBuilder: any) => {
+    queryBuilder.orderBy('full_name');
+    if (page && perPage) {
+      queryBuilder.offset((page - 1) * perPage).limit(perPage);
+    }
+  });
+
+  logger.debug('filteredCount', filteredCount);
+
+  return <PaginatedResultApi<OwnerApi>>{
+    entities: results.map((result: any) => parseOwnerApi(result)),
+    totalCount,
+    filteredCount,
+    page,
+    perPage
+  };
+};
+
+const findByHousing = async (
+  housing: HousingApi
+): Promise<HousingOwnerApi[]> => {
+  const owners: Array<OwnerDBO & HousingOwnerDBO> = await db(ownerTable)
+    .select(`${ownerTable}.*`)
+    .join(
+      housingOwnersTable,
+      `${ownerTable}.id`,
+      `${housingOwnersTable}.owner_id`
+    )
+    .select(`${housingOwnersTable}.*`)
+    .modify(include(['banAddress']))
+    .where(`${housingOwnersTable}.housing_id`, housing.id)
+    .where(`${housingOwnersTable}.housing_geo_code`, housing.geoCode)
+    .orderBy('end_date', 'desc')
+    .orderBy('rank');
+
+  return owners.map(parseHousingOwnerApi);
+};
+
+const insert = async (draftOwnerApi: OwnerApi): Promise<OwnerApi> => {
+  logger.info('Insert draftOwnerApi');
+  return Owners()
+    .insert({
+      address_dgfip: draftOwnerApi.rawAddress,
+      full_name: draftOwnerApi.fullName,
+      birth_date: draftOwnerApi.birthDate,
+      email: draftOwnerApi.email,
+      phone: draftOwnerApi.phone
+    })
+    .returning('*')
+    .then((_) => parseOwnerApi(_[0]));
+};
+
+type BetterSaveOptions = ConflictOptions<OwnerDBO>;
+
+/**
+ * @todo Rename this to `save` when {@link save} and {@link saveMany} get removed
+ * @param owner
+ * @param opts
+ */
+async function betterSave(
+  owner: OwnerApi,
+  opts: BetterSaveOptions
+): Promise<void> {
+  logger.debug(`Saving owner...`, { owner });
+  await Owners().insert(formatOwnerApi(owner)).modify(onConflict(opts));
+}
+
+async function betterSaveMany(
+  owners: ReadonlyArray<OwnerApi>,
+  opts: BetterSaveOptions
+): Promise<void> {
+  logger.debug(`Saving ${owners.length} owners...`);
+  if (owners.length === 0) {
+    return;
+  }
+
+  await withinTransaction(async (transaction) => {
+    await Owners(transaction)
+      .insert(owners.map(formatOwnerApi))
+      .modify(onConflict(opts));
+  });
+}
+
+interface SaveOptions {
+  /**
+   * @default 'ignore'
+   */
+  onConflict?: 'merge' | 'ignore';
+}
+
+/**
+ * @deprecated Use {@link betterSave} instead
+ * @param owner
+ * @param opts
+ */
+async function save(owner: OwnerApi, opts?: SaveOptions): Promise<void> {
+  return saveMany([owner], opts);
+}
+
+/**
+ * @deprecated Use {@link betterSave} instead
+ * @param owners
+ * @param opts
+ */
+async function saveMany(owners: OwnerApi[], opts?: SaveOptions): Promise<void> {
+  logger.debug(`Saving ${owners.length} owners...`);
+
+  const ownersWithoutBirthdate = owners
+    .filter((owner) => !owner.birthDate)
+    .map(formatOwnerApi);
+  const ownersWithBirthdate = owners
+    .filter((owner) => !!owner.birthDate)
+    .map(formatOwnerApi);
+
+  const onConflict = opts?.onConflict ?? 'merge';
+
+  await db.transaction(async (transaction) => {
+    const queries = [];
+
+    if (ownersWithBirthdate.length > 0) {
+      queries.push(
+        transaction<OwnerDBO>(ownerTable)
+          .insert(ownersWithBirthdate)
+          .modify((builder) => {
+            if (onConflict === 'merge') {
+              return builder
+                .onConflict(['full_name', 'address_dgfip', 'birth_date'])
+                .merge(['administrator', 'kind_class']);
+            }
+            return builder
+              .onConflict(['full_name', 'address_dgfip', 'birth_date'])
+              .ignore();
+          })
+      );
+    }
+
+    if (ownersWithoutBirthdate.length > 0) {
+      queries.push(
+        transaction<OwnerDBO>(ownerTable)
+          .insert(ownersWithoutBirthdate)
+          .modify((builder) => {
+            if (onConflict === 'merge') {
+              return builder
+                .onConflict(
+                  db.raw(
+                    '(full_name, address_dgfip, (birth_date IS NULL)) where birth_date is null'
+                  )
+                )
+                .merge(['administrator', 'kind_class']);
+            }
+            return builder
+              .onConflict(
+                db.raw(
+                  '(full_name, address_dgfip, (birth_date IS NULL)) where birth_date is null'
+                )
+              )
+              .ignore();
+          })
+      );
+    }
+
+    await Promise.all(queries);
+  });
+}
+
+const update = async (ownerApi: OwnerApi): Promise<OwnerApi> => {
+  try {
+    return db(ownerTable)
+      .where('id', ownerApi.id)
+      .update({
+        address_dgfip: ownerApi.rawAddress,
+        full_name: ownerApi.fullName,
+        birth_date: ownerApi.birthDate,
+        email: ownerApi.email ?? null,
+        phone: ownerApi.phone ?? null,
+        additional_address: ownerApi.additionalAddress ?? null
+      })
+      .returning('*')
+      .then((_) => parseOwnerApi(_[0]));
+  } catch (err) {
+    console.error('Updating owner failed', err, ownerApi);
+    throw new Error('Updating owner failed');
+  }
+};
+
+const insertHousingOwners = async (
+  housingOwners: HousingOwnerApi[]
+): Promise<number> => {
+  try {
+    return db(housingOwnersTable)
+      .insert(
+        housingOwners.map((ho) => ({
+          owner_id: ho.id,
+          housing_id: ho.housingId,
+          housing_geo_code: ho.housingGeoCode,
+          rank: ho.rank,
+          start_date: ho.startDate,
+          end_date: ho.endDate,
+          origin: ho.origin
+        }))
+      )
+      .returning('*')
+      .then((_) => _.length);
+  } catch (err) {
+    console.error('Inserting housing owners failed', err);
+    throw new Error('Inserting housing owners failed');
+  }
+};
+
+const deleteHousingOwners = async (
+  housingId: string,
+  ownerIds: string[]
+): Promise<number> => {
+  try {
+    return db(housingOwnersTable)
+      .delete()
+      .whereIn('owner_id', ownerIds)
+      .andWhere('housing_id', housingId);
+  } catch (err) {
+    console.error('Removing owners from housing failed', err, ownerIds);
+    throw new Error('Removing owners from housing failed');
+  }
+};
+
+const updateAddressList = async (
+  ownerAdresses: { addressId: string; addressApi: AddressApi }[]
+): Promise<HousingApi[]> => {
+  try {
+    if (ownerAdresses.filter((oa) => oa.addressId).length) {
+      const update =
+        'UPDATE owners as o SET ' +
+        'postal_code = c.postal_code, house_number = c.house_number, street = c.street, city = c.city ' +
+        'FROM (values' +
+        ownerAdresses
+          .filter((oa) => oa.addressId)
+          .map(
+            (ha) =>
+              `('${ha.addressId}', '${ha.addressApi.postalCode}', '${
+                ha.addressApi.houseNumber ?? ''
+              }', '${escapeValue(ha.addressApi.street)}', '${escapeValue(
+                ha.addressApi.city
+              )}')`
+          ) +
+        ') as c(id, postal_code, house_number, street, city)' +
+        ' WHERE o.id::text = c.id';
+
+      return db.raw(update);
+    } else {
+      return Promise.resolve([]);
+    }
+  } catch (err) {
+    console.error('Listing housing failed', err);
+    throw new Error('Listing housing failed');
+  }
+};
+
+const escapeValue = (value?: string) => {
+  return value ? value.replace(/'/g, "''") : '';
+};
+
+type OwnerInclude = 'banAddress' | 'housings';
+
+function include(includes: OwnerInclude[]) {
+  const joins: Record<OwnerInclude, (query: Knex.QueryBuilder) => void> = {
+    banAddress: (query) =>
+      query
+        .leftJoin(banAddressesTable, (query: any) => {
+          query
+            .on(`${ownerTable}.id`, `${banAddressesTable}.ref_id`)
+            .andOnVal('address_kind', AddressKinds.Owner);
+        })
+        .select(db.raw(`to_json(${banAddressesTable}.*) AS ban`)),
+    housings: (query) =>
+      query
+        .joinRaw(
+          `
+          LEFT JOIN LATERAL (
+            SELECT json_agg(${housingTable}.*) AS housings
+            FROM ${housingOwnersTable}
+            JOIN ${housingTable}
+              ON ${housingOwnersTable}.housing_geo_code = ${housingTable}.geo_code
+              AND ${housingOwnersTable}.housing_id = ${housingTable}.id
+            WHERE ${ownerTable}.id = ${housingOwnersTable}.owner_id
+          ) h ON true
+        `
+        )
+        .select('h.housings')
+  };
+
+  return (query: Knex.QueryBuilder) => {
+    _.uniq(includes).forEach((include) => {
+      joins[include](query);
+    });
+  };
+}
+
+function filter(filters?: OwnerFilters) {
+  return (query: Knex.QueryBuilder) => {
+    if (filters?.idpersonne !== undefined) {
+      match(filters.idpersonne)
+        .with(true, () => {
+          query.whereNotNull('idpersonne');
+        })
+        .with(false, () => {
+          query.whereNull('idpersonne');
+        })
+        .with(Pattern.string, (value) => {
+          query.where('idpersonne', value);
+        })
+        .with(Pattern.array(Pattern.string), (value) => {
+          if (value.length > 0) {
+            query.whereIn('idpersonne', value);
+          }
+        })
+        .exhaustive();
+    }
+
+    if (filters?.campaignId) {
+      query
+        .join(
+          housingOwnersTable,
+          `${ownerTable}.id`,
+          `${housingOwnersTable}.owner_id`
+        )
+        .join(housingTable, ownerHousingJoinClause)
+        .join(campaignsHousingTable, (query) =>
+          query
+            .on(`${housingTable}.id`, `${campaignsHousingTable}.housing_id`)
+            .andOn(
+              `${housingTable}.geo_code`,
+              `${campaignsHousingTable}.housing_geo_code`
+            )
+        )
+        .where(`${campaignsHousingTable}.campaign_id`, filters.campaignId);
+    }
+
+    if (filters?.groupId) {
+      query
+        .join(
+          housingOwnersTable,
+          `${ownerTable}.id`,
+          `${housingOwnersTable}.owner_id`
+        )
+        .join(housingTable, ownerHousingJoinClause)
+        .join(GROUPS_HOUSING_TABLE, (query) =>
+          query
+            .on(`${housingTable}.id`, `${GROUPS_HOUSING_TABLE}.housing_id`)
+            .andOn(
+              `${housingTable}.geo_code`,
+              `${GROUPS_HOUSING_TABLE}.housing_geo_code`
+            )
+        )
+        .where(`${GROUPS_HOUSING_TABLE}.group_id`, filters.groupId);
+    }
+  };
+}
+
+export const parseOwnerApi = (owner: OwnerDBO): OwnerApi => {
+  const birthDate = match(owner.birth_date)
+    .returnType<string | null>()
+    .with(Pattern.string, (value) => value.substring(0, 'yyyy-mm-dd'.length))
+    .with(Pattern.instanceOf(Date), (value) =>
+      value.toJSON().substring(0, 'yyyy-mm-dd'.length)
+    )
+    .otherwise((value) => value);
+  return {
+    id: owner.id,
+    idpersonne: owner.idpersonne,
+    rawAddress: owner.address_dgfip,
+    fullName: owner.full_name,
+    administrator: owner.administrator ?? null,
+    birthDate: birthDate,
+    email: owner.email ?? null,
+    phone: owner.phone ?? null,
+    kind: owner.kind_class,
+    siren: owner.siren ?? null,
+    banAddress: owner.ban ? parseAddressApi(owner.ban) : null,
+    additionalAddress: owner.additional_address ?? null,
+    entity: owner.entity,
+    username: owner.username ?? null,
+    createdAt: owner.created_at ? new Date(owner.created_at).toJSON() : null,
+    updatedAt: owner.updated_at ? new Date(owner.updated_at).toJSON() : null
+  };
+};
+
+export const parseHousingOwnerApi = (
+  housingOwner: OwnerDBO & HousingOwnerDBO
+): HousingOwnerApi => ({
+  ...parseOwnerApi(housingOwner),
+  ownerId: housingOwner.id,
+  housingId: housingOwner.housing_id,
+  housingGeoCode: housingOwner.housing_geo_code,
+  rank: housingOwner.rank,
+  startDate: housingOwner.start_date,
+  endDate: housingOwner.end_date,
+  origin: housingOwner.origin,
+  idprocpte: housingOwner.idprocpte,
+  idprodroit: housingOwner.idprodroit,
+  locprop:
+    typeof housingOwner.locprop_source === 'string'
+      ? Number(housingOwner.locprop_source)
+      : null,
+  relativeLocation: fromRelativeLocationDBO(housingOwner.locprop_relative_ban),
+  absoluteDistance: housingOwner.locprop_distance_ban,
+  propertyRight: housingOwner.property_right
+});
+
+export const formatOwnerApi = (owner: OwnerApi): OwnerRecordDBO => ({
+  id: owner.id,
+  idpersonne: owner.idpersonne ?? null,
+  full_name: owner.fullName,
+  birth_date: owner.birthDate,
+  administrator: owner.administrator ?? null,
+  siren: owner.siren ?? null,
+  address_dgfip: owner.rawAddress,
+  additional_address: owner.additionalAddress ?? null,
+  email: owner.email ?? null,
+  phone: owner.phone ?? null,
+  data_source: owner.dataSource ?? null,
+  kind_class: owner.kind ?? null,
+  entity: owner.entity,
+  username: owner.username ?? null,
+  created_at: owner.createdAt ? new Date(owner.createdAt) : null,
+  updated_at: owner.updatedAt ? new Date(owner.updatedAt) : null,
+  is_multi_owner: null
+});
+
+// pg encodes parameter count as uint16 (max 65 535). A whereIn with more IDs
+// than this overflows the wire-protocol bind message. Chunk well below that.
+const MULTI_OWNER_BATCH_SIZE = 10_000;
+
+async function refreshMultiOwnerFlags(
+  ownerIds: ReadonlyArray<string>
+): Promise<void> {
+  if (!ownerIds.length) return;
+  for (let i = 0; i < ownerIds.length; i += MULTI_OWNER_BATCH_SIZE) {
+    const chunk = ownerIds.slice(i, i + MULTI_OWNER_BATCH_SIZE);
+    await withinTransaction(async (transaction) => {
+      await Owners(transaction)
+        .whereIn('id', chunk)
+        .update({
+          is_multi_owner: db.raw(
+            `(SELECT COUNT(*) > 1 FROM ${housingOwnersTable} WHERE owner_id = owners.id AND rank = 1)`
+          )
+        });
+    });
+  }
+}
+
+export { refreshMultiOwnerFlags };
+
+export default {
+  find,
+  count,
+  stream,
+  get,
+  findOne,
+  searchOwners,
+  findByHousing,
+  insert,
+  betterSave,
+  betterSaveMany,
+  save,
+  saveMany,
+  update,
+  updateAddressList,
+  deleteHousingOwners,
+  insertHousingOwners,
+  refreshMultiOwnerFlags
+};

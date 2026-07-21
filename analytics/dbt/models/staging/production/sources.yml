@@ -1,0 +1,26 @@
+version: 2
+
+sources:
+  - name: duckdb_production_raw
+    schema: production
+    tables:
+      - name: buildings
+      - name: housing
+      - name: owners
+      - name: events
+      - name: old_events
+      - name: housing_events
+      - name: housing_document_events
+      - name: establishments
+      - name: users
+      - name: campaigns_housing
+      - name: campaigns
+      - name: owners_housing
+      - name: group_housing_events
+      - name: groups
+      - name: groups_housing
+      - name: geo_perimeters
+      - name: notes
+      - name: housing_notes
+      - name: owner_notes
+      - name: owner_events

@@ -1,0 +1,772 @@
+version: 2
+
+models:
+  - name: marts_production_housing
+    description: "Table principale des logements avec informations complètes incluant les derniers statuts, territoires spéciaux et métriques de campagnes"
+    columns:
+      - name: housing_id
+        description: "Identifiant unique du logement (UUID converti en VARCHAR)"
+        tests:
+          - unique
+          - not_null
+      - name: id
+        description: "Identifiant UUID original du logement"
+        tests:
+          - unique
+          - not_null
+      - name: invariant
+        description: "Identifiant invariant du logement dans les fichiers fonciers"
+      - name: local_id
+        description: "Identifiant local du logement"
+      - name: building_id
+        description: "Identifiant du bâtiment auquel appartient le logement"
+      - name: address_dgfip
+        description: "Adresse du logement selon la DGFiP (format array)"
+      - name: geo_code
+        description: "Code géographique INSEE de la commune"
+      - name: longitude_dgfip
+        description: "Longitude du logement selon la DGFiP"
+      - name: latitude_dgfip
+        description: "Latitude du logement selon la DGFiP"
+      - name: cadastral_classification
+        description: "Classification cadastrale du logement"
+      - name: uncomfortable
+        description: "Indicateur si le logement est inconfortable (boolean)"
+      - name: vacancy_start_year
+        description: "Année de début de vacance du logement"
+      - name: housing_kind
+        description: "Type de logement (maison, appartement, etc.)"
+      - name: rooms_count
+        description: "Nombre de pièces du logement"
+      - name: living_area
+        description: "Surface habitable du logement en m²"
+      - name: cadastral_reference
+        description: "Référence cadastrale du logement"
+      - name: building_year
+        description: "Année de construction du bâtiment"
+      - name: mutation_date
+        description: "Date de la dernière mutation"
+      - name: taxed
+        description: "Indicateur si le logement est taxé (boolean)"
+      - name: data_years
+        description: "Années de données disponibles pour ce logement (array)"
+      - name: beneficiary_count
+        description: "Nombre de bénéficiaires"
+      - name: building_location
+        description: "Localisation du bâtiment"
+      - name: rental_value
+        description: "Valeur locative du logement"
+      - name: condominium
+        description: "Information sur la copropriété"
+      - name: status
+        description: "Statut du logement"
+      - name: sub_status
+        description: "Sous-statut du logement"
+      - name: energy_consumption_bdnb
+        description: "Classe de consommation énergétique selon la BDNB"
+      - name: occupancy_source
+        description: "Source de l'information d'occupation"
+      - name: occupancy
+        description: "Statut d'occupation du logement (V=Vacant, P=Occupé par le propriétaire, L=En location, etc.)"
+      - name: occupancy_intended
+        description: "Occupation prévue du logement"
+      - name: plot_id
+        description: "Identifiant de la parcelle"
+      - name: energy_consumption_at_bdnb
+        description: "Date de mise à jour de la consommation énergétique BDNB"
+      - name: building_group_id
+        description: "Identifiant du groupe de bâtiments"
+      - name: data_source
+        description: "Source des données du logement"
+      - name: data_file_years
+        description: "Années des fichiers de données (format array)"
+      - name: geolocation
+        description: "Géolocalisation du logement"
+      - name: plot_area
+        description: "Surface de la parcelle en m²"
+      - name: last_mutation_date
+        description: "Date de la dernière mutation (timestamp)"
+      - name: last_transaction_date
+        description: "Date de la dernière transaction"
+      - name: last_transaction_value
+        description: "Valeur de la dernière transaction"
+      - name: occupancy_history
+        description: "Historique des occupations"
+      - name: last_mutation_type
+        description: "Type de la dernière mutation"
+      - name: city_code
+        description: "Code INSEE de la commune"
+      - name: energy_sieve
+        description: "Indicateur passoire énergétique (F ou G) - calculé"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+      - name: vacant_two_years
+        description: "Indicateur logement vacant depuis plus de 2 ans - calculé"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+      - name: is_in_opah_teritory
+        description: "Indicateur si le logement est en territoire OPAH"
+      - name: is_in_tlv1_teritory
+        description: "Indicateur si le logement est en territoire TLV1"
+      - name: is_in_tlv2_teritory
+        description: "Indicateur si le logement est en territoire TLV2"
+      - name: is_in_action_coeur_de_ville_teritory
+        description: "Indicateur si le logement est en territoire Action Cœur de Ville"
+      - name: is_in_petite_ville_de_demain_teritory
+        description: "Indicateur si le logement est en territoire Petite Ville de Demain"
+      - name: is_in_village_davenir_teritory
+        description: "Indicateur si le logement est en territoire Village d'Avenir"
+      - name: label
+        description: "Label du territoire"
+      - name: total_validated
+        description: "Nombre total de campagnes validées pour ce logement"
+      - name: total_confirmed
+        description: "Nombre total de campagnes confirmées pour ce logement"
+      - name: total_sent
+        description: "Nombre total de campagnes envoyées pour ce logement"
+      - name: total_groups
+        description: "Nombre total de groupes auxquels appartient le logement"
+      - name: establishment_ids
+        description: "Identifiants des établissements liés (format string)"
+      - name: establishment_ids_array
+        description: "Identifiants des établissements liés (format array UUID)"
+      - name: is_on_user_teritory
+        description: "Indicateur si le logement est sur un territoire utilisateur"
+
+  - name: marts_production_campaigns
+    description: "Table des campagnes de communication avec métriques de performance et statistiques de retour"
+    columns:
+      - name: campaign_id
+        description: "Identifiant unique de la campagne (UUID converti en VARCHAR)"
+        tests:
+          - unique
+          - not_null
+      - name: id
+        description: "Identifiant UUID original de la campagne"
+        tests:
+          - unique
+          - not_null
+      - name: campaign_number_deprecated
+        description: "Numéro de campagne (déprécié)"
+      - name: start_month_deprecated
+        description: "Mois de début (déprécié)"
+      - name: reminder_number_deprecated
+        description: "Numéro de relance (déprécié)"
+      - name: filters
+        description: "Filtres appliqués à la campagne (format JSON)"
+      - name: created_at
+        description: "Date de création de la campagne"
+        tests:
+          - not_null
+      - name: validated_at
+        description: "Date de validation de la campagne"
+      - name: exported_at
+        description: "Date d'export de la campagne"
+      - name: sent_at
+        description: "Date d'envoi de la campagne"
+      - name: establishment_id
+        description: "Identifiant de l'établissement propriétaire de la campagne"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('marts_production_establishments')
+              field: id
+      - name: user_id
+        description: "Identifiant de l'utilisateur créateur de la campagne"
+      - name: recovery_id
+        description: "Identifiant de récupération"
+      - name: kind_deprecated
+        description: "Type de campagne (déprécié)"
+      - name: title
+        description: "Titre de la campagne"
+        tests:
+          - not_null
+      - name: archived_at
+        description: "Date d'archivage de la campagne"
+      - name: confirmed_at
+        description: "Date de confirmation de la campagne"
+      - name: group_id
+        description: "Identifiant du groupe associé à la campagne"
+        tests:
+          - relationships:
+              to: ref('marts_production_groups')
+              field: id
+      - name: status
+        description: "Statut de la campagne (draft, in-progress, sent, archived)"
+      - name: file
+        description: "Fichier associé à la campagne"
+      - name: description
+        description: "Description de la campagne"
+      - name: is_validated
+        description: "Indicateur si la campagne est validée (0/1)"
+        data_tests:
+          - accepted_values:
+              values: [0, 1]
+      - name: is_confirmed
+        description: "Indicateur si la campagne est confirmée (0/1)"
+        data_tests:
+          - accepted_values:
+              values: [0, 1]
+      - name: is_sent
+        description: "Indicateur si la campagne est envoyée (0/1)"
+        data_tests:
+          - accepted_values:
+              values: [0, 1]
+      - name: is_creation_gt_30_days
+        description: "Indicateur si la création date de plus de 30 jours (0/1)"
+      - name: is_creation_lt_30_days
+        description: "Indicateur si la création date de moins de 30 jours (0/1)"
+      - name: next_campaign_sent_at
+        description: "Date d'envoi de la prochaine campagne"
+      - name: time_to_next_campaign
+        description: "Temps jusqu'à la prochaine campagne (interval)"
+      - name: housing_number_in_campaign
+        description: "Nombre de logements dans la campagne"
+      - name: return_count_3_months
+        description: "Nombre de retours dans les 3 mois"
+      - name: return_rate_3_months
+        description: "Taux de retour dans les 3 mois (%)"
+      - name: has_next_campaign_in_3_months
+        description: "Indicateur s'il y a une prochaine campagne dans les 3 mois"
+      - name: return_count_6_months
+        description: "Nombre de retours dans les 6 mois"
+      - name: return_rate_6_months
+        description: "Taux de retour dans les 6 mois (%)"
+      - name: has_next_campaign_in_6_months
+        description: "Indicateur s'il y a une prochaine campagne dans les 6 mois"
+      - name: return_count_9_months
+        description: "Nombre de retours dans les 9 mois"
+      - name: return_rate_9_months
+        description: "Taux de retour dans les 9 mois (%)"
+      - name: has_next_campaign_in_9_months
+        description: "Indicateur s'il y a une prochaine campagne dans les 9 mois"
+      - name: return_count_36_months
+        description: "Nombre de retours dans les 36 mois"
+      - name: return_rate_36_months
+        description: "Taux de retour dans les 36 mois (%)"
+      - name: has_next_campaign_in_36_months
+        description: "Indicateur s'il y a une prochaine campagne dans les 36 mois"
+      - name: first_event_global_date
+        description: "Date du premier événement global"
+      - name: last_event_global_date
+        description: "Date du dernier événement global"
+      - name: first_event_followup_date
+        description: "Date du premier événement de suivi"
+      - name: last_event_followup_date
+        description: "Date du dernier événement de suivi"
+      - name: first_event_ownership_date
+        description: "Date du premier événement de propriété"
+      - name: last_event_ownership_date
+        description: "Date du dernier événement de propriété"
+
+  - name: marts_production_establishments
+    description: "Table principale des établissements avec informations complètes sur les utilisateurs, campagnes, groupes, périmètres et contacts"
+    columns:
+      - name: establishment_id
+        description: "Identifiant unique de l'établissement (UUID converti en VARCHAR)"
+        tests:
+          - unique
+          - not_null
+      - name: id
+        description: "Identifiant UUID original de l'établissement"
+        tests:
+          - unique
+          - not_null
+      - name: siren
+        description: "Numéro SIREN de l'établissement"
+      - name: name
+        description: "Nom de l'établissement"
+        tests:
+          - not_null
+      - name: available
+        description: "Indicateur si l'établissement est disponible"
+        tests:
+          - not_null
+      - name: localities_geo_code
+        description: "Codes géographiques des communes couvertes (array)"
+      - name: updated_at
+        description: "Date de dernière mise à jour"
+      - name: source
+        description: "Source des données de l'établissement"
+      - name: suspended_at
+        description: "Date de suspension de l'établissement"
+      - name: suspended_cause
+        description: "Cause de la suspension"
+      - name: deleted_at
+        description: "Date de suppression de l'établissement"
+      - name: establishment_kind_label
+        description: "Libellé du type d'établissement"
+      - name: establishment_synthetic_type_label
+        description: "Libellé synthétique du type d'établissement"
+      - name: covered_by_state_service
+        description: "Indicateur si couvert par un service de l'État"
+      - name: user_ids
+        description: "Identifiants des utilisateurs (format string séparé par virgules)"
+      - name: user_emails
+        description: "Emails des utilisateurs (format string séparé par virgules)"
+      - name: user_number
+        description: "Nombre d'utilisateurs de l'établissement"
+      - name: is_active
+        description: "Indicateur si l'établissement est actif"
+      - name: last_activated_at
+        description: "Date de dernière activation"
+      - name: first_activated_at
+        description: "Date de première activation"
+      - name: last_authenticated_at
+        description: "Date de dernière authentification"
+      - name: connected_last_30_days
+        description: "Indicateur de connexion dans les 30 derniers jours"
+      - name: connected_last_60_days
+        description: "Indicateur de connexion dans les 60 derniers jours"
+      - name: connected_last_90_days
+        description: "Indicateur de connexion dans les 90 derniers jours"
+      - name: has_campaigns
+        description: "Indicateur si l'établissement a des campagnes"
+      - name: total_campaigns
+        description: "Nombre total de campagnes"
+      - name: total_sent_campaigns
+        description: "Nombre total de campagnes envoyées"
+      - name: total_exported_campaigns
+        description: "Nombre total de campagnes exportées"
+      - name: last_campaign_created
+        description: "Date de création de la dernière campagne"
+      - name: first_campaign_created
+        description: "Date de création de la première campagne"
+      - name: has_groups
+        description: "Indicateur si l'établissement a des groupes"
+      - name: total_groups
+        description: "Nombre total de groupes"
+      - name: total_exported_groups
+        description: "Nombre total de groupes exportés"
+      - name: last_group_created
+        description: "Date de création du dernier groupe"
+      - name: first_group_created
+        description: "Date de création du premier groupe"
+      - name: has_perimeters
+        description: "Indicateur si l'établissement a des périmètres"
+      - name: total_perimeters
+        description: "Nombre total de périmètres"
+      - name: total_shapes
+        description: "Nombre total de formes géographiques"
+      - name: total_kinds
+        description: "Nombre total de types"
+      - name: contacted_housing_2020
+        description: "Nombre de logements contactés en 2020"
+      - name: contacted_housing_2021
+        description: "Nombre de logements contactés en 2021"
+      - name: contacted_housing_2022
+        description: "Nombre de logements contactés en 2022"
+      - name: contacted_housing_2023
+        description: "Nombre de logements contactés en 2023"
+      - name: contacted_housing_2024
+        description: "Nombre de logements contactés en 2024"
+      - name: contacted_housing_2025
+        description: "Nombre de logements contactés en 2025"
+      - name: contacts_number_2020
+        description: "Nombre de contacts en 2020"
+      - name: contacts_number_2021
+        description: "Nombre de contacts en 2021"
+      - name: contacts_number_2022
+        description: "Nombre de contacts en 2022"
+      - name: contacts_number_2023
+        description: "Nombre de contacts en 2023"
+      - name: contacts_number_2024
+        description: "Nombre de contacts en 2024"
+      - name: contacts_number_2025
+        description: "Nombre de contacts en 2025"
+      - name: contacted_housing_followup_ended_2020
+        description: "Nombre de logements contactés avec suivi terminé en 2020"
+      - name: contacted_housing_followup_ended_2021
+        description: "Nombre de logements contactés avec suivi terminé en 2021"
+      - name: contacted_housing_followup_ended_2022
+        description: "Nombre de logements contactés avec suivi terminé en 2022"
+      - name: contacted_housing_followup_ended_2023
+        description: "Nombre de logements contactés avec suivi terminé en 2023"
+      - name: contacted_housing_followup_ended_2024
+        description: "Nombre de logements contactés avec suivi terminé en 2024"
+      - name: contacted_housing_followup_ended_2025
+        description: "Nombre de logements contactés avec suivi terminé en 2025"
+      - name: contacted_housing_followup_ended_not_vacant_2020
+        description: "Nombre de logements contactés avec suivi terminé (non vacant) en 2020"
+      - name: contacted_housing_followup_ended_not_vacant_2021
+        description: "Nombre de logements contactés avec suivi terminé (non vacant) en 2021"
+      - name: contacted_housing_followup_ended_not_vacant_2022
+        description: "Nombre de logements contactés avec suivi terminé (non vacant) en 2022"
+      - name: contacted_housing_followup_ended_not_vacant_2023
+        description: "Nombre de logements contactés avec suivi terminé (non vacant) en 2023"
+      - name: contacted_housing_followup_ended_not_vacant_2024
+        description: "Nombre de logements contactés avec suivi terminé (non vacant) en 2024"
+      - name: contacted_housing_followup_ended_not_vacant_2025
+        description: "Nombre de logements contactés avec suivi terminé (non vacant) en 2025"
+      - name: last_event_status_user_followup
+        description: "Statut du dernier événement de suivi utilisateur"
+      - name: last_event_status_label_user_followup
+        description: "Libellé du statut du dernier événement de suivi utilisateur"
+      - name: last_event_date_user_followup
+        description: "Date du dernier événement de suivi utilisateur"
+      - name: last_event_sub_status_label_user_followup
+        description: "Libellé du sous-statut du dernier événement de suivi utilisateur"
+      - name: last_event_occupancy_user_occupancy
+        description: "Occupation du dernier événement utilisateur"
+      - name: last_event_date_user_occupancy
+        description: "Date du dernier événement d'occupation utilisateur"
+
+  - name: marts_production_establishments_activation
+    description: "Analyse de l'activation des établissements avec typologie détaillée basée sur l'utilisation de la plateforme"
+    columns:
+      - name: establishment_id
+        description: "Identifiant unique de l'établissement"
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('marts_production_establishments')
+              field: establishment_id
+      - name: connecte_90_derniers_jours
+        description: "Connexion dans les 90 derniers jours (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: connecte_60_derniers_jours
+        description: "Connexion dans les 60 derniers jours (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: connecte_30_derniers_jours
+        description: "Connexion dans les 30 derniers jours (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_depose_1_perimetre
+        description: "A déposé au moins 1 périmètre (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_cree_1_groupe
+        description: "A créé au moins 1 groupe (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_cree_1_campagne
+        description: "A créé au moins 1 campagne (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_cree_1_campagne_30_derniers_jours
+        description: "A créé au moins 1 campagne dans les 30 derniers jours (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_envoye_1_campagne
+        description: "A envoyé au moins 1 campagne (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_fait_1_maj_suivi
+        description: "A fait au moins 1 mise à jour de suivi (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_fait_1_maj_occupation
+        description: "A fait au moins 1 mise à jour d'occupation (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_fait_1_maj
+        description: "A fait au moins 1 mise à jour (suivi ou occupation) (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: a_fait_1_campagne_ET_1_maj
+        description: "A fait au moins 1 campagne ET 1 mise à jour (true/false)"
+        data_tests:
+          - accepted_values:
+              values: [true, false]
+              quote: false
+      - name: typologie_activation_simple
+        description: "Typologie d'activation simplifiée (4 niveaux)"
+        data_tests:
+          - accepted_values:
+              values: ['(1) CT inactive', '(2) CT en analyse', '(3) CT en campagne', '(4) CT activée', 'Erreur de classification']
+      - name: typologie_activation_detaillee
+        description: "Typologie d'activation détaillée (10 niveaux croisant activation et connexion)"
+        data_tests:
+          - accepted_values:
+              values: ['(1.1) CT inactive et fantôme', '(1.2) CT inactive et visiteuse', '(2.1) CT en analyse et fantôme', '(2.2) CT en analyse et visiteuse', '(3.1) CT en campagne et fantôme', '(3.2) CT en campagne et visiteuse', '(4.1) CT pro-active et fantôme', '(4.2) CT pro-active et visiteuse', '(5.1) CT exemplaire et fantôme', '(5.2) CT exemplaire et visiteuse', 'Erreur de classification']
+      - name: type_explicite
+        description: "Type d'établissement explicite (libellé complet)"
+      - name: type_regroupe
+        description: "Type d'établissement regroupé (4 catégories principales)"
+        data_tests:
+          - accepted_values:
+              values: ['Intercommunalité', 'Commune', 'DDT/M', 'Autre']
+
+  - name: marts_production_establishments_category_pro_activity
+    description: "Classification de pro-activité des établissements opérationnels ouverts (EPCI, Communes) basée sur différents critères de performance dans la lutte contre la vacance"
+    columns:
+      - name: establishment_id
+        description: "Identifiant unique de l'établissement"
+        tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('marts_production_establishments')
+              field: establishment_id
+      - name: name
+        description: "Nom de l'établissement"
+      - name: kind
+        description: "Type d'établissement (CA, CC, CU, ME, Commune)"
+        data_tests:
+          - accepted_values:
+              values: ['CA', 'CC', 'CU', 'ME', 'Commune']
+      - name: total_campaigns_sent
+        description: "Nombre total de campagnes envoyées"
+      - name: housing_contacted_2024
+        description: "Nombre de logements contactés en 2024"
+      - name: housing_rate_contacted_2024
+        description: "Taux de logements contactés en 2024 par rapport au parc total (LOVAC 24 + FF 23)"
+      - name: housing_vacant_rate_contacted_2024
+        description: "Taux de logements vacants contactés en 2024 par rapport au parc vacant LOVAC 24"
+      - name: housing_vacant_rate_contacted_2023
+        description: "Taux de logements vacants contactés en 2023 par rapport au parc vacant LOVAC 23"
+      - name: housing_rented_rate_contacted_2024
+        description: "Taux de logements locatifs contactés en 2024 par rapport au parc locatif FF 23"
+      - name: kind_campaigns_sent_quantile
+        description: "Classification par quartiles du nombre de campagnes envoyées - méthode quantile (1-4)"
+        data_tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+      - name: kind_housing_contacted_quantile
+        description: "Classification par quartiles du nombre de logements contactés - méthode quantile (1-4)"
+        data_tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+      - name: kind_housing_rate_contacted_2024_quantile
+        description: "Classification par quartiles du taux de logements contactés en 2024 - méthode quantile (1-4)"
+        data_tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+      - name: kind_housing_vacant_rate_contacted_quantile
+        description: "Classification par quartiles du taux de logements vacants contactés - méthode quantile (1-4)"
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+      - name: kind_housing_vacant_rate_contacted_2024_quantile
+        description: "Classification par quartiles du taux de logements vacants contactés en 2024 - méthode quantile (1-4)"
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+      - name: kind_housing_vacant_rate_contacted_2023_quantile
+        description: "Classification par quartiles du taux de logements vacants contactés en 2023 - méthode quantile (1-4)"
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+      - name: kind_housing_rented_rate_contacted_2024_quantile
+        description: "Classification par quartiles du taux de logements locatifs contactés en 2024 - méthode quantile (1-4)"
+        tests:
+          - accepted_values:
+              values: [1, 2, 3, 4]
+      - name: total_pro_activity_quantile
+        description: "Score total de pro-activité - méthode quantile (somme des 7 critères, de 7 à 28 points)"
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 7
+              max_value: 28
+      - name: kind_pro_activity_quantile
+        description: "Classification finale de pro-activité par quartiles - méthode quantile"
+        tests:
+          - accepted_values:
+              values: ['Non pro-actif', 'Peu pro-actif', 'Pro-actif', 'Très pro-actif']
+      - name: kind_pro_activity_ntile
+        description: "Classification finale de pro-activité par quartiles - méthode ntile"
+        tests:
+          - accepted_values:
+              values: ['Non pro-actif', 'Peu pro-actif', 'Pro-actif', 'Très pro-actif']
+
+  - name: marts_production_groups
+    description: "Table des groupes de logements créés par les utilisateurs pour organiser leurs campagnes"
+    columns:
+      - name: id
+        description: "Identifiant unique du groupe"
+        tests:
+          - unique
+          - not_null
+      - name: title
+        description: "Titre du groupe"
+        tests:
+          - not_null
+      - name: description
+        description: "Description du groupe"
+      - name: created_at
+        description: "Date de création du groupe"
+        tests:
+          - not_null
+      - name: archived_at
+        description: "Date d'archivage du groupe"
+      - name: user_id
+        description: "Identifiant de l'utilisateur créateur du groupe"
+      - name: establishment_id
+        description: "Identifiant de l'établissement propriétaire du groupe"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('marts_production_establishments')
+              field: id
+      - name: exported_at
+        description: "Date d'export du groupe"
+
+  - name: marts_production_owners
+    description: "Table des propriétaires de logements avec informations personnelles et adresses"
+    columns:
+      - name: owner_id
+        description: "Identifiant unique du propriétaire (UUID converti en VARCHAR)"
+        tests:
+          - unique
+          - not_null
+      - name: id
+        description: "Identifiant UUID original du propriétaire"
+        tests:
+          - unique
+          - not_null
+      - name: full_name
+        description: "Nom complet du propriétaire"
+      - name: birth_date
+        description: "Date de naissance du propriétaire"
+      - name: administrator
+        description: "Administrateur du propriétaire (pour les personnes morales)"
+      - name: address_dgfip
+        description: "Adresse du propriétaire selon la DGFiP (format array)"
+      - name: kind_class
+        description: "Classe de type de propriétaire"
+      - name: owner_kind_detail
+        description: "Détail du type de propriétaire"
+      - name: email
+        description: "Adresse email du propriétaire"
+      - name: phone
+        description: "Numéro de téléphone du propriétaire"
+      - name: additional_address
+        description: "Adresse complémentaire"
+      - name: idpersonne
+        description: "Identifiant personne"
+      - name: siren
+        description: "Numéro SIREN (pour les personnes morales)"
+      - name: data_source
+        description: "Source des données du propriétaire"
+      - name: created_at
+        description: "Date de création de l'enregistrement"
+      - name: updated_at
+        description: "Date de dernière mise à jour"
+      - name: entity
+        description: "Entité du propriétaire"
+      - name: full_name_fts
+        description: "Nom complet pour la recherche textuelle"
+      - name: address_element
+        description: "Élément d'adresse"
+      - name: cleaned_address
+        description: "Adresse nettoyée"
+      - name: postal_code
+        description: "Code postal"
+      - name: city
+        description: "Ville"
+      - name: street_address
+        description: "Adresse de rue"
+
+  - name: marts_production_cerema_lovac_users_unregistered
+    description: "LOVAC users from CEREMA Portail DF who do not yet have an account in ZLV — onboarding gap list refreshed monthly via Dagster."
+    columns:
+      - name: email
+        description: "Email of the LOVAC user from Portail DF. Deduplicated to one row per user (a user can be attached to several Portail DF structures); we keep the structure with the most recent LOVAC access."
+        tests:
+          - unique
+          - not_null
+      - name: structure_acces_lovac
+        description: "Date the user's structure was granted LOVAC access."
+        tests:
+          - not_null
+      - name: structure_siret
+        description: "SIRET of the user's Portail DF structure — useful to map to the corresponding ZLV establishment."
+      - name: structure_raison_sociale
+        description: "Raison sociale of the user's Portail DF structure."
+
+  - name: marts_production_users
+    description: "Table des utilisateurs avec informations sur leurs établissements de rattachement"
+    columns:
+      - name: user_id
+        description: "Identifiant unique de l'utilisateur (UUID converti en VARCHAR)"
+      - name: establishment_id
+        description: "Identifiant de l'établissement de rattachement (UUID converti en VARCHAR)"
+        tests:
+          - relationships:
+              to: ref('marts_production_establishments')
+              field: establishment_id
+      - name: id
+        description: "Identifiant UUID original de l'utilisateur"
+        tests:
+          - unique
+          - not_null
+      - name: email
+        description: "Adresse email de l'utilisateur"
+        tests:
+          - unique
+          - not_null
+      - name: password
+        description: "Mot de passe hashé de l'utilisateur"
+      - name: first_name
+        description: "Prénom de l'utilisateur"
+      - name: last_name
+        description: "Nom de famille de l'utilisateur"
+      - name: role
+        description: "Rôle de l'utilisateur (numérique)"
+      - name: activated_at
+        description: "Date d'activation du compte utilisateur"
+      - name: last_authenticated_at
+        description: "Date de dernière authentification"
+      - name: deleted_at
+        description: "Date de suppression du compte"
+      - name: updated_at
+        description: "Date de dernière mise à jour"
+      - name: phone
+        description: "Numéro de téléphone de l'utilisateur"
+      - name: position
+        description: "Poste/fonction de l'utilisateur"
+      - name: time_per_week
+        description: "Temps consacré par semaine"
+      - name: suspended_at
+        description: "Date de suspension du compte"
+      - name: suspended_cause
+        description: "Cause de la suspension"
+      - name: user_type
+        description: "Type d'utilisateur"
+      - name: siren
+        description: "Numéro SIREN de l'établissement"
+      - name: name
+        description: "Nom de l'établissement"
+      - name: available
+        description: "Disponibilité de l'établissement"
+      - name: localities_geo_code
+        description: "Codes géographiques des communes couvertes par l'établissement"
+      - name: kind
+        description: "Type d'établissement"
+      - name: source
+        description: "Source des données de l'établissement"
+      - name: establishment_kind_label
+        description: "Libellé du type d'établissement"
+      - name: establishment_synthetic_type_label
+        description: "Libellé synthétique du type d'établissement"
+      - name: covered_by_state_service
+        description: "Indicateur si l'établissement est couvert par un service de l'État"
+
+  - name: marts_production_events

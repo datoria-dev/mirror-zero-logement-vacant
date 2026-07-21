@@ -1,0 +1,65 @@
+name: Create Sentry release
+on:
+  push:
+    branches:
+      - prod
+    paths:
+      - frontend/**
+      - queue/**
+      - server/**
+      - packages/**
+
+jobs:
+  deploy-front-production:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      app: Front production
+      alias: front-production
+      branch: prod
+      environment: Production
+    secrets: inherit
+
+  deploy-api-production:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      app: API production
+      alias: api-production
+      branch: prod
+    secrets: inherit
+
+  deploy-front-demo:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      app: zlv-demo-front
+      alias: zlv-demo-front
+      branch: prod
+      environment: Demo
+    secrets: inherit
+
+  deploy-api-demo:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      app: zlv-demo-api
+      alias: zlv-demo-api
+      branch: prod
+    secrets: inherit
+
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Create Sentry release
+        uses: getsentry/action-release@v1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          SENTRY_URL: ${{ secrets.SENTRY_URL }}
+        with:
+          environment: production
+          sourcemaps: 'dist/**/*.map'
+          ignore_missing: true

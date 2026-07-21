@@ -1,0 +1,153 @@
+import { constants } from 'http2';
+
+import { Precision, PRECISION_EQUIVALENCE } from '@zerologementvacant/models';
+import { Array } from 'effect';
+import { RequestHandler } from 'express';
+import { AuthenticatedRequest } from 'express-jwt';
+import { v4 as uuidv4 } from 'uuid';
+
+import HousingMissingError from '~/errors/housingMissingError';
+import PrecisionMissingError from '~/errors/precisionMissingError';
+import { startTransaction } from '~/infra/database/transaction';
+import { PrecisionHousingEventApi } from '~/models/EventApi';
+import { toPrecisionDTO } from '~/models/PrecisionApi';
+import eventRepository from '~/repositories/eventRepository';
+import housingRepository from '~/repositories/housingRepository';
+import precisionRepository from '~/repositories/precisionRepository';
+
+const find: RequestHandler<never, Precision[], never, never> = async (
+  _,
+  response
+): Promise<void> => {
+  const precisions = await precisionRepository.find();
+  response
+    .status(constants.HTTP_STATUS_OK)
+    .json(precisions.map(toPrecisionDTO));
+};
+
+interface PathParams extends Record<string, string> {
+  id: string;
+}
+
+const findByHousing: RequestHandler<
+  PathParams,
+  Precision[],
+  never,
+  never
+> = async (request, response): Promise<void> => {
+  const { effectiveGeoCodes, establishment, params } =
+    request as AuthenticatedRequest<PathParams, Precision[], never, never>;
+
+  const [housing, precisions] = await Promise.all([
+    housingRepository.findOne({
+      establishment: establishment.id,
+      geoCode: effectiveGeoCodes ?? establishment.geoCodes,
+      id: params.id
+    }),
+    precisionRepository.find({
+      filters: {
+        housingId: [params.id]
+      }
+    })
+  ]);
+  if (!housing) {
+    throw new HousingMissingError(params.id);
+  }
+
+  response
+    .status(constants.HTTP_STATUS_OK)
+    .json(precisions.map(toPrecisionDTO));
+};
+
+const updatePrecisionsByHousing: RequestHandler<
+  PathParams,
+  Array<Precision>,
+  Array<Precision['id']>,
+  never
+> = async (request, response): Promise<void> => {
+  const { auth, body, effectiveGeoCodes, establishment, params } =
+    request as AuthenticatedRequest<
+      PathParams,
+      Array<Precision>,
+      Array<Precision['id']>,
+      never
+    >;
+
+  const [housing, precisions] = await Promise.all([
+    housingRepository.findOne({
+      establishment: establishment.id,
+      geoCode: effectiveGeoCodes ?? establishment.geoCodes,
+      id: params.id
+    }),
+    body.length > 0
+      ? precisionRepository.find({
+          filters: {
+            id: body
+          }
+        })
+      : Promise.resolve([])
+  ]);
+  if (!housing) {
+    throw new HousingMissingError(params.id);
+  }
+  if (precisions.length < body.length) {
+    throw new PrecisionMissingError(...body);
+  }
+
+  const existingPrecisions = await precisionRepository.find({
+    filters: {
+      housingId: [housing.id]
+    }
+  });
+  const substract = Array.differenceWith(PRECISION_EQUIVALENCE);
+  const removed = substract(existingPrecisions, precisions);
+  const added = substract(precisions, existingPrecisions);
+  const events = [
+    ...added.map<PrecisionHousingEventApi>((precision) => ({
+      id: uuidv4(),
+      type: 'housing:precision-attached',
+      nextOld: null,
+      nextNew: {
+        category: precision.category,
+        label: precision.label
+      },
+      createdAt: new Date().toJSON(),
+      createdBy: auth.userId,
+      precisionId: precision.id,
+      housingGeoCode: housing.geoCode,
+      housingId: housing.id
+    })),
+    ...removed.map<PrecisionHousingEventApi>((precision) => ({
+      id: uuidv4(),
+      type: 'housing:precision-detached',
+      nextOld: {
+        category: precision.category,
+        label: precision.label
+      },
+      nextNew: null,
+      createdAt: new Date().toJSON(),
+      createdBy: auth.userId,
+      precisionId: precision.id,
+      housingGeoCode: housing.geoCode,
+      housingId: housing.id
+    }))
+  ];
+
+  await startTransaction(async () => {
+    await Promise.all([
+      precisionRepository.link(housing, precisions),
+      eventRepository.insertManyPrecisionHousingEvents(events)
+    ]);
+  });
+  response
+    .status(constants.HTTP_STATUS_OK)
+    .json(precisions.map(toPrecisionDTO));
+};
+
+const precisionController = {
+  find,
+  findByHousing,
+  updatePrecisionsByHousing
+};
+
+export default precisionController;
